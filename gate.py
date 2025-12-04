@@ -734,7 +734,7 @@ async def sh(card_input: str, proxy_manager):
                         )
                     
                     # Fallback to text analysis if JSON parsing doesn't give clear status
-                    elif any(keyword in text.lower() for keyword in ['thank', 'order', 'confirm', 'success', 'processed', 'confirmed', 'completed', 'your order', 'confirmation']):
+                    elif any(keyword in text.lower() for keyword in ['thank', 'thank you','Thank You']):
                         return ShResult(
                             f"""𝐂𝐇𝐀𝐑𝐆𝐄𝐃 1$🔥🔥
                             
@@ -764,7 +764,7 @@ async def sh(card_input: str, proxy_manager):
                     pass
                 
                 # Text-based fallback logic with "thank" keyword
-                if any(keyword in text.lower() for keyword in ['thank', 'thank you', 'order', 'confirm', 'success', 'processed', 'confirmed', 'completed', 'your order', 'confirmation']):
+                if any(keyword in text.lower() for keyword in ['thank', 'thank you', 'Thank You',]):
                     return ShResult(
                         f"""𝐂𝐇𝐀𝐑𝐆𝐄𝐃 1$🔥🔥
                         
@@ -891,7 +891,7 @@ async def sh(card_input: str, proxy_manager):
                         pass
                     
                     # Text-based check with "thank" keyword
-                    if any(keyword in final_text.lower() for keyword in ['thank', 'thank you', 'order', 'confirm', 'success', 'processed', 'confirmed', 'completed', 'your order', 'confirmation']):
+                    if any(keyword in final_text.lower() for keyword in ['thank', 'thank you', 'Thank You']):
                         return ShResult(
                             f"""𝐂𝐇𝐀𝐑𝐆𝐄𝐃 1$🔥🔥
 
