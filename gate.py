@@ -261,7 +261,7 @@ async def sh(card_input: str, proxy_manager):
                 'issue_number': '',
                 'name': f'{rfirst} {rlast}',
             },
-            'payment_session_scope': 'mymedictr.org',
+            'payment_session_scope': 'violettefieldthreads.com',
         }
         
         try:
