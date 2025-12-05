@@ -67,13 +67,11 @@ class ProxyManager:
         self.load_proxies()
 
     def load_proxies(self):
-        # Load proxies from database
         db_proxies = []
         for p in proxies_col.find({}, {'proxy': 1}):
             if 'proxy' in p:
                 db_proxies.append(p['proxy'])
         
-        # Load proxies from proxies.txt file
         file_proxies = []
         try:
             if os.path.exists("proxies.txt"):
@@ -82,10 +80,8 @@ class ProxyManager:
         except Exception as e:
             logger.error(f"Error loading proxies from file: {str(e)}")
         
-        # Combine and deduplicate proxies
         all_proxies = list(set(db_proxies + file_proxies))
         
-        # Update database with new proxies
         for proxy in file_proxies:
             if not proxies_col.find_one({"proxy": proxy}):
                 proxies_col.insert_one({"proxy": proxy, "source": "file", "added_at": datetime.utcnow()})
@@ -98,7 +94,6 @@ class ProxyManager:
             return None
             
         async with self.semaphore:
-            # Check if we need to wait before next batch
             current_time = time.time()
             if current_time - self.last_batch_time < 70 and len(self.proxies) - len(self.bad_proxies) < 3:
                 wait_time = 70 - (current_time - self.last_batch_time)
@@ -108,7 +103,6 @@ class ProxyManager:
             elif current_time - self.last_batch_time >= 70:
                 self.last_batch_time = time.time()
             
-            # Find next good proxy
             start_index = self.current_index
             while True:
                 proxy = self.proxies[self.current_index]
@@ -209,7 +203,6 @@ def can_user_check_more(user_id: int, card_count: int) -> bool:
         })
         return True
     
-    # Reset if more than 5 minutes have passed
     if (current_time - user_limit["last_check_time"]) > timedelta(minutes=5):
         user_limits_col.update_one(
             {"user_id": user_id},
@@ -220,7 +213,6 @@ def can_user_check_more(user_id: int, card_count: int) -> bool:
         )
         return True
     
-    # Check if user has checked less than 1500 cards
     if user_limit["cards_checked"] + card_count <= 1500:
         user_limits_col.update_one(
             {"user_id": user_id},
@@ -251,7 +243,7 @@ TOKEN = "8181079198:AAFIE0MVuCPWaC0w1HbBsHlCLJKKGpbDneM"
 user_cooldowns = {}
 user_locks = defaultdict(asyncio.Lock)
 
-# Helper functions for Gate4
+# Helper functions
 def format_duration(seconds):
     """Format duration in minutes:seconds"""
     minutes = int(seconds // 60)
@@ -260,16 +252,48 @@ def format_duration(seconds):
         return f"{minutes}m {secs}s"
     return f"{secs}s"
 
+async def update_progress_buttons(context, chat_id, message_id, data):
+    """Update the inline buttons with current stats"""
+    try:
+        charged = data["charged"]
+        approved = data["approved"]
+        declined = data["declined"]
+        checked = data["checked"]
+        total = data["total"]
+        current_response = data.get("current_response", "Waiting...")
+        
+        keyboard = [
+            [
+                InlineKeyboardButton(f"CHARGED 🔥: {charged}", callback_data='stats_charged'),
+                InlineKeyboardButton(f"APPROVED ✅: {approved}", callback_data='stats_approved')
+            ],
+            [
+                InlineKeyboardButton(f"DECLINED ⛔️: {declined}", callback_data='stats_declined'),
+                InlineKeyboardButton(f"RESPONSE: {current_response}", callback_data='stats_response')
+            ],
+            [
+                InlineKeyboardButton(f"TOTAL CC: {checked}/{total}", callback_data='stats_total')
+            ]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await context.bot.edit_message_reply_markup(
+            chat_id=chat_id,
+            message_id=message_id,
+            reply_markup=reply_markup
+        )
+    except Exception as e:
+        logger.error(f"Error updating buttons: {e}")
+
 # ====================================
 # ADMIN COMMANDS
 # ====================================
 
-# /addadmin command (owner only)
 async def addadmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != OWNER_ID:
         await update.message.reply_text("❌ You are not authorized to use this command.")
-        log_event("WARNING", "Unauthorized addadmin attempt", user_id)
         return
     
     if not context.args:
@@ -279,13 +303,11 @@ async def addadmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         target_user_id = int(context.args[0])
         
-        # Check if user is already admin
         existing_admin = admins_col.find_one({"user_id": target_user_id})
         if existing_admin:
             await update.message.reply_text(f"❌ User {target_user_id} is already an admin.")
             return
         
-        # Add to admins collection
         admins_col.insert_one({
             "user_id": target_user_id,
             "added_by": user_id,
@@ -297,17 +319,14 @@ async def addadmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log_event("INFO", f"Admin added: {target_user_id}", user_id)
         
     except ValueError:
-        await update.message.reply_text("❌ Invalid user ID. Please provide a numeric user ID.")
+        await update.message.reply_text("❌ Invalid user ID.")
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
-        log_event("ERROR", f"Error adding admin: {str(e)}", user_id)
 
-# /rmadmin command (owner only)
 async def rmadmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != OWNER_ID:
         await update.message.reply_text("❌ You are not authorized to use this command.")
-        log_event("WARNING", "Unauthorized rmadmin attempt", user_id)
         return
     
     if not context.args:
@@ -317,13 +336,11 @@ async def rmadmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         target_user_id = int(context.args[0])
         
-        # Check if user is admin
         existing_admin = admins_col.find_one({"user_id": target_user_id})
         if not existing_admin:
             await update.message.reply_text(f"❌ User {target_user_id} is not an admin.")
             return
         
-        # Remove from admins collection
         result = admins_col.delete_one({"user_id": target_user_id})
         
         if result.deleted_count > 0:
@@ -333,12 +350,10 @@ async def rmadmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"❌ Failed to remove admin.")
             
     except ValueError:
-        await update.message.reply_text("❌ Invalid user ID. Please provide a numeric user ID.")
+        await update.message.reply_text("❌ Invalid user ID.")
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
-        log_event("ERROR", f"Error removing admin: {str(e)}", user_id)
 
-# /listadmins command (owner and admins)
 async def listadmins(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != OWNER_ID and not is_admin(user_id):
@@ -348,7 +363,7 @@ async def listadmins(update: Update, context: ContextTypes.DEFAULT_TYPE):
     admins = list(admins_col.find({}))
     
     if not admins:
-        await update.message.reply_text("📋 No admins found (only owner has admin rights).")
+        await update.message.reply_text("📋 No admins found.")
         return
     
     admin_list = "📋 <b>Admin List:</b>\n\n"
@@ -359,21 +374,17 @@ async def listadmins(update: Update, context: ContextTypes.DEFAULT_TYPE):
         admin_list += (
             f"<b>{i}. Admin ID:</b> {admin['user_id']}\n"
             f"   <b>Added by:</b> {admin.get('added_by', 'Unknown')}\n"
-            f"   <b>Added at:</b> {admin.get('added_at', datetime.utcnow()).strftime('%Y-%m-%d %H:%M:%S')}\n"
-            f"   <b>Status:</b> {'✅ Active' if admin.get('is_active', True) else '❌ Inactive'}\n\n"
+            f"   <b>Added at:</b> {admin.get('added_at', datetime.utcnow()).strftime('%Y-%m-%d %H:%M:%S')}\n\n"
         )
     
     admin_list += f"<b>Total Admins:</b> {len(admins)}"
     
     await update.message.reply_text(admin_list, parse_mode='HTML')
-    log_event("INFO", "Admin list viewed", user_id)
 
-# /genkey command (owner and admins)
 async def genkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != OWNER_ID and not is_admin(user_id):
         await update.message.reply_text("❌ You are not authorized to use this command.")
-        log_event("WARNING", "Unauthorized genkey attempt", user_id)
         return
     
     if not context.args:
@@ -396,10 +407,8 @@ async def genkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         log_event("INFO", f"Key generated: {key} for {duration} days", user_id)
     except ValueError:
-        await update.message.reply_text("❌ Invalid duration. Please provide a number.")
-        log_event("ERROR", "Invalid duration for genkey", user_id)
+        await update.message.reply_text("❌ Invalid duration.")
 
-# /redeem command
 async def redeem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not context.args:
@@ -423,14 +432,11 @@ async def redeem(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❌ Invalid or already used key\n"
             "Contact @FNxELECTRA for a valid key"
         )
-        log_event("WARNING", f"Failed redemption attempt: {key}", user_id)
 
-# /delkey command (owner and admins)
 async def delkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != OWNER_ID and not is_admin(user_id):
         await update.message.reply_text("❌ You are not authorized to use this command.")
-        log_event("WARNING", "Unauthorized delkey attempt", user_id)
         return
     
     if not context.args:
@@ -443,13 +449,11 @@ async def delkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if result.deleted_count > 0:
             await update.message.reply_text(f"✅ Subscription for user {target_user_id} has been deleted")
-            log_event("INFO", f"Subscription deleted for user: {target_user_id}", user_id)
         else:
             await update.message.reply_text(f"❌ No active subscription found for user {target_user_id}")
     except ValueError:
-        await update.message.reply_text("❌ Invalid user ID. Please provide a numeric user ID.")
+        await update.message.reply_text("❌ Invalid user ID.")
 
-# Proxy management commands
 async def add_proxy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != OWNER_ID and not is_admin(user_id):
@@ -505,7 +509,7 @@ async def del_proxy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"✅ Proxy deleted successfully!\n<code>{proxy}</code>", parse_mode='HTML')
         log_event("INFO", f"Proxy deleted: {proxy}", user_id)
     except ValueError:
-        await update.message.reply_text("❌ Invalid index. Please provide a number.")
+        await update.message.reply_text("❌ Invalid index.")
 
 async def reload_proxies(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -517,12 +521,10 @@ async def reload_proxies(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ Proxies reloaded! Total: {len(proxy_manager.proxies)}")
     log_event("INFO", "Proxies reloaded", user_id)
 
-# /broadcast command (owner and admins)
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != OWNER_ID and not is_admin(user_id):
         await update.message.reply_text("❌ You are not authorized to use this command.")
-        log_event("WARNING", "Unauthorized broadcast attempt", user_id)
         return
     
     if not context.args:
@@ -566,7 +568,6 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def check_access(update: Update, context: ContextTypes.DEFAULT_TYPE, handler):
     user_id = update.effective_user.id
     
-    # Extract command if it's a text message starting with '/'
     command = None
     if update.message and update.message.text and update.message.text.startswith('/'):
         parts = update.message.text.split()
@@ -576,19 +577,15 @@ async def check_access(update: Update, context: ContextTypes.DEFAULT_TYPE, handl
                 cmd = cmd.split('@')[0]
             command = cmd
 
-    # Allow access to these commands without a key
     if command in ["start", "help", "redeem", "genkey"]:
         return await handler(update, context)
 
-    # Allow owner and admins full access to all commands
     if user_id == OWNER_ID or is_admin(user_id):
         return await handler(update, context)
 
-    # Check if user has valid access
     if has_valid_access(user_id):
         return await handler(update, context)
 
-    # Access denied
     user = users_col.find_one({"user_id": user_id})
     if user and "expires_at" in user:
         expiry = user["expires_at"].strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -645,7 +642,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_event("INFO", "User started bot", update.effective_user.id)
 
 # ====================================
-# GATE1 COMMANDS (Shopify 1$)
+# GATE1 COMMANDS
 # ====================================
 
 async def single_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -819,7 +816,7 @@ async def process_multi_check(update, context, cards, user_id):
         await update.message.reply_text(result_text, parse_mode='HTML')
 
 # ====================================
-# GATE2 COMMANDS (Shopify 14$)
+# GATE2 COMMANDS
 # ====================================
 
 async def single_check_gate2(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -869,7 +866,7 @@ async def process_single_check_gate2(update, context, card, user_id):
         response_text = (
             f"𝐂𝐇𝐀𝐑𝐆𝐄𝐃 14$🔥🔥\n\n"
             f"[ϟ]𝗖𝗮𝗿𝗱 -» <code>{card}</code>\n"
-            f"[ϟ]𝗦𝘁𝗮𝘁𝘂𝘀 -» Charged 🔥\n"
+            f"[ϟ]𝗦𝘁𝗮𝘁𝘂𝘁𝘀 -» Charged 🔥\n"
             f"[ϟ]𝗚𝗮𝘁𝗲𝘄𝗮𝘆 -» Shopify 14$\n"
             f"[ϟ]𝗥𝗲𝘀𝗽𝗼𝗻𝘀𝗲 -» {response}\n\n"
             f"[ϟ]𝗜𝗻𝗳𝗼 -» {card_info}\n"
@@ -993,7 +990,7 @@ async def process_multi_check_gate2(update, context, cards, user_id):
         await update.message.reply_text(result_text, parse_mode='HTML')
 
 # ====================================
-# GATE3 COMMANDS (Live Check)
+# GATE3 COMMANDS
 # ====================================
 
 async def single_check_gate3(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1046,7 +1043,7 @@ async def process_single_check_gate3(update, context, card, user_id):
     response_text = (
         f"{header}\n\n"
         f"[ϟ]𝗖𝗮𝗿𝗱 -» <code>{card}</code>\n"
-        f"[ϟ]𝗦𝘁𝗮𝘁𝘂𝘀 -» {result.status}\n"
+        f"[ϟ]𝗦𝘁𝗮𝘁𝘂𝘁𝘀 -» {result.status}\n"
         f"[ϟ]𝗚𝗮𝘁𝗲𝘄𝗮𝘆 -» Live Check\n"
         f"[ϟ]𝗥𝗲𝗮𝘀𝗼𝗻 -» {result.message}\n\n"
         f"[ϟ]𝗜𝗻𝗳𝗼 -» {card_info}\n"
@@ -1139,10 +1136,9 @@ async def process_multi_check_gate3(update, context, cards, user_id):
         await update.message.reply_text(result_text, parse_mode='HTML')
 
 # ====================================
-# GATE4 COMMANDS (Auto Shopify)
+# GATE4 COMMANDS
 # ====================================
 
-# /addsite command
 async def add_site(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
@@ -1152,23 +1148,19 @@ async def add_site(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     site = context.args[0].strip()
     
-    # Basic validation
     if not site.startswith(('http://', 'https://')):
         site = f"https://{site}"
     
-    # Check if site already exists for user
     existing = user_sites_col.find_one({"user_id": user_id, "site": site})
     if existing:
         await update.message.reply_text(f"⚠️ Site already exists in your list:\n<code>{site}</code>", parse_mode='HTML')
         return
     
-    # Test the site first
     checking_msg = await update.message.reply_text(f"🔍 Testing site: {site}")
     
     is_working, message = await gate4_manager.check_site(site)
     
     if is_working:
-        # Save to database
         user_sites_col.insert_one({
             "user_id": user_id,
             "site": site,
@@ -1197,9 +1189,7 @@ async def add_site(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Please try a different site",
             parse_mode='HTML'
         )
-        log_event("WARNING", f"Site failed: {site} - {message}", user_id)
 
-# /rmsite command
 async def remove_site(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
@@ -1209,7 +1199,6 @@ async def remove_site(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     site = context.args[0].strip()
     
-    # Try with and without https
     sites_to_try = [site]
     if not site.startswith(('http://', 'https://')):
         sites_to_try.append(f"https://{site}")
@@ -1229,7 +1218,6 @@ async def remove_site(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(f"❌ Site not found in your list:\n<code>{site}</code>", parse_mode='HTML')
 
-# /sitelist command
 async def list_sites(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
@@ -1261,12 +1249,10 @@ async def list_sites(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(site_list, parse_mode='HTML')
 
-# /ash command - Single card check for Gate4
 async def gate4_single_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     current_time = time.time()
     
-    # Check cooldown
     if user_id in user_cooldowns and current_time - user_cooldowns[user_id] < 10:
         wait_time = 10 - (current_time - user_cooldowns[user_id])
         await update.message.reply_text(f"⏳ Please wait {wait_time:.1f} seconds before checking another card.")
@@ -1283,13 +1269,8 @@ async def gate4_single_check(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user_cooldowns[user_id] = time.time()
 
 async def process_gate4_single_check(update, context, card, user_id):
-    # Get site for user
     site = await gate4_manager.get_site_for_user(user_id)
-    
-    # Get proxy
     proxy = await proxy_manager.rotate_proxy()
-    
-    # Check card
     result = await gate4_manager.check_card(card, site, proxy)
     
     try:
@@ -1302,12 +1283,21 @@ async def process_gate4_single_check(update, context, card, user_id):
         gate4_manager.mark_site_bad(result.site_used)
         return
     
-    # Format response based on status
+    if result.status == "Captcha":
+        await update.message.reply_text(f"⚠️ Captcha Detected on site. Trying different site...")
+        for _ in range(3):
+            site = await gate4_manager.get_site_for_user(user_id)
+            proxy = await proxy_manager.rotate_proxy()
+            result = await gate4_manager.check_card(card, site, proxy)
+            
+            if result.status != "Captcha":
+                break
+            await asyncio.sleep(1)
+    
     checked_by = f"<a href='tg://user?id={update.effective_user.id}'>{update.effective_user.first_name}</a>"
     time_taken = f"{result.elapsed_time:.2f}s"
     proxy_status = result.proxy_status
     
-    # Determine header and status display based on response
     if result.status == "Charged":
         header = "𝐂𝐇𝐀𝐑𝐆𝐄𝐃"
         status_display = "Charged 🔥"
@@ -1316,21 +1306,16 @@ async def process_gate4_single_check(update, context, card, user_id):
         header = "𝐀𝐏𝐏𝐑𝐎𝐕𝐄𝐃"
         status_display = "Approved ✅"
         gateway = f"Shopify ${result.price}"
-    else:  # Declined
+    else:
         header = "𝐃𝐄𝐂𝐋𝐈𝐍𝐄𝐃"
         status_display = "Declined ❌"
         gateway = f"Shopify ${result.price}"
     
-    # Format country display
     country_display = f"{result.country}{result.flag} - {result.currency}" if result.country else "Unknown"
-    
-    # Format card info
     card_info = result.card_info
-    
-    # Format issuer (bank)
     issuer = result.bank or result.issuer or "Unknown"
+    site_display = gate4_manager.format_site_display(result.site_used)
     
-    # Create response text
     response_text = (
         f"{header}\n\n"
         f"[ϟ]𝗖𝗮𝗿𝗱 -» <code>{card}</code>\n"
@@ -1345,15 +1330,14 @@ async def process_gate4_single_check(update, context, card, user_id):
         f"[ϟ]𝗖𝗼𝘂𝗻𝘁𝗿𝘆 -» {country_display}\n\n"
         f"[⌬]𝗧𝗶𝗺𝗲 -» {time_taken}\n"
         f"[⌬]𝗣𝗿𝗼𝘅𝘆 -» {proxy_status}\n"
-        f"[⌬]𝗦𝗶𝘁𝗲 -» {result.site_used}\n"
+        f"[⌬]𝗦𝗶𝘁𝗲 -» {site_display}\n"
         f"[⌬]𝗖𝗵𝐞𝐜𝐤𝐞𝐝 𝐁𝐲 -» {checked_by}\n"
         f"[み]𝗕𝗼𝘁 -» <a href='https://t.me/FN_SH_BOT'>𝙁𝙉 𝙎𝙃𝙊𝙋𝙄𝙁𝙔</a>"
     )
     
     await update.message.reply_text(response_text, parse_mode='HTML')
     
-    # Update site stats
-    if result.status != "Error":
+    if result.status != "Error" and result.status != "Captcha":
         update_data = {"$set": {"last_used": datetime.utcnow()}}
         
         if result.status == "Charged":
@@ -1369,7 +1353,6 @@ async def process_gate4_single_check(update, context, card, user_id):
             upsert=True
         )
 
-# /mash command - Mass card check for Gate4 (up to 20 cards)
 async def gate4_mass_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
@@ -1387,7 +1370,6 @@ async def gate4_mass_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # Parse cards
     cards = []
     if update.message.reply_to_message and update.message.reply_to_message.text:
         lines = update.message.reply_to_message.text.strip().split('\n')
@@ -1397,7 +1379,6 @@ async def gate4_mass_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines = text.split('\n')
         cards = [line.strip() for line in lines[1:] if line.strip() and '|' in line]
     
-    # Limit to 20 cards
     if len(cards) > 20:
         cards = cards[:20]
         await update.message.reply_text(f"⚠️ Limited to first 20 cards (total: {len(cards)})")
@@ -1406,17 +1387,40 @@ async def gate4_mass_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ No valid cards found. Format: cc|mm|yy|cvv")
         return
     
-    # Start mass check in background
     asyncio.create_task(process_gate4_mass_check(update, context, cards, user_id))
 
 async def process_gate4_mass_check(update, context, cards, user_id):
-    # Initialize check data
     check_id = gate4_manager.add_user_check(user_id, len(cards))
     
     try:
-        status_msg = await update.message.reply_text("📁 File Received! Mass Checking Started...")
+        start_message = (
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "[ϟ] FN SHOPIFY \n"
+            "[ϟ] MASS CHECKING STARTED\n"
+            "[み] BE PATIENCE \n"
+            "━━━━━━━━━━━━━━━━━━━━━━"
+        )
         
-        # Save active check to database
+        keyboard = [
+            [
+                InlineKeyboardButton(f"CHARGED 🔥: 0", callback_data='stats_charged'),
+                InlineKeyboardButton(f"APPROVED ✅: 0", callback_data='stats_approved')
+            ],
+            [
+                InlineKeyboardButton(f"DECLINED ⛔️: 0", callback_data='stats_declined'),
+                InlineKeyboardButton(f"RESPONSE: Waiting...", callback_data='stats_response')
+            ],
+            [
+                InlineKeyboardButton(f"TOTAL CC: 0/{len(cards)}", callback_data='stats_total')
+            ]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        status_msg = await update.message.reply_text(
+            start_message,
+            reply_markup=reply_markup
+        )
+        
         active_mass_checks_col.insert_one({
             "user_id": user_id,
             "check_id": check_id,
@@ -1426,38 +1430,42 @@ async def process_gate4_mass_check(update, context, cards, user_id):
         })
         
         for i, card in enumerate(cards):
-            # Check if user stopped the check
             check_data = gate4_manager.get_user_check_data(user_id)
             if not check_data or check_data.get("stop"):
                 break
             
-            # Update progress every 50 cards
-            if i % 50 == 0 and i > 0:
-                await send_progress_update(context, update.effective_chat.id, status_msg.message_id, check_data)
+            max_retries = 3
+            retry_count = 0
+            result = None
             
-            # Get site and proxy
-            site = await gate4_manager.get_site_for_user(user_id)
-            proxy = await proxy_manager.rotate_proxy()
+            while retry_count < max_retries:
+                site = await gate4_manager.get_site_for_user(user_id)
+                proxy = await proxy_manager.rotate_proxy()
+                result = await gate4_manager.check_card(card, site, proxy)
+                
+                if result.status == "Captcha" or "HCAPTCHA" in result.response.upper():
+                    retry_count += 1
+                    if retry_count < max_retries:
+                        await asyncio.sleep(1)
+                        continue
+                
+                break
             
-            # Check card
-            result = await gate4_manager.check_card(card, site, proxy)
-            
-            # Update stats
             gate4_manager.update_user_check(user_id, result)
             
-            # Mark bad site if error
-            if result.status == "Error":
-                gate4_manager.mark_site_bad(result.site_used)
+            if result.status == "Charged" or result.status == "Approved":
+                await send_individual_result(update, context, card, result, user_id)
             
-            # Small delay between cards
-            await asyncio.sleep(1)
+            check_data = gate4_manager.get_user_check_data(user_id)
+            if check_data:
+                await update_progress_buttons(context, update.effective_chat.id, status_msg.message_id, check_data)
+            
+            await asyncio.sleep(0.5)
         
-        # Final stats
         check_data = gate4_manager.get_user_check_data(user_id)
         if check_data:
             duration = time.time() - check_data["start_time"]
             
-            # Save to database
             mass_checks_col.insert_one({
                 "user_id": user_id,
                 "check_id": check_id,
@@ -1466,128 +1474,168 @@ async def process_gate4_mass_check(update, context, cards, user_id):
                 "charged": check_data["charged"],
                 "approved": check_data["approved"],
                 "declined": check_data["declined"],
+                "errors": check_data["errors"],
                 "duration": duration,
                 "hits": check_data["hits"],
                 "declined_cards": check_data["declined_list"]
             })
             
-            # Update active check status
             active_mass_checks_col.update_one(
                 {"user_id": user_id, "check_id": check_id},
                 {"$set": {"status": "completed", "end_time": datetime.utcnow()}}
             )
             
-            # Send final results
-            await send_final_results(update, context, check_data, duration, user_id)
-        
-        # Delete status message
-        try:
-            await context.bot.delete_message(
-                chat_id=update.effective_chat.id,
-                message_id=status_msg.message_id
-            )
-        except:
-            pass
+            await send_final_results_file(update, context, check_data, duration, user_id)
+            
+            final_response = "Check Complete" if check_data["checked"] == check_data["total"] else "Stopped"
+            check_data["current_response"] = final_response
+            await update_progress_buttons(context, update.effective_chat.id, status_msg.message_id, check_data)
         
     except Exception as e:
         log_event("ERROR", f"Gate4 mass check error: {str(e)}", user_id)
         await update.message.reply_text(f"❌ Error during mass check: {str(e)}")
     finally:
-        # Clean up
         gate4_manager.remove_user_check(user_id)
         active_mass_checks_col.delete_one({"user_id": user_id, "check_id": check_id})
 
-async def send_progress_update(context, chat_id, message_id, data):
-    """Send progress update message"""
-    checked = data["checked"]
-    total = data["total"]
-    charged = data["charged"]
-    approved = data["approved"]
-    declined = data["declined"]
-    duration = time.time() - data["start_time"]
+async def send_individual_result(update, context, card, result, user_id):
+    """Send individual card result for charged/approved cards"""
+    checked_by = f"<a href='tg://user?id={update.effective_user.id}'>{update.effective_user.first_name}</a>"
+    time_taken = f"{result.elapsed_time:.2f}s"
+    proxy_status = result.proxy_status
     
-    # Calculate speed
-    if duration > 0:
-        speed = checked / duration
+    if result.status == "Charged":
+        header = "𝐂𝐇𝐀𝐑𝐆𝐄𝐃"
+        status_display = "Charged 🔥"
+        gateway = f"Shopify ${result.price}"
+    elif result.status == "Approved":
+        header = "𝐀𝐏𝐏𝐑𝐎𝐕𝐄𝐃"
+        status_display = "Approved ✅"
+        gateway = f"Shopify ${result.price}"
     else:
-        speed = 0
+        return
     
-    # Calculate success rate
-    if checked > 0:
-        success_rate = ((charged + approved) / checked) * 100
-    else:
-        success_rate = 0
+    country_display = f"{result.country}{result.flag} - {result.currency}" if result.country else "Unknown"
+    card_info = result.card_info
+    issuer = result.bank or result.issuer or "Unknown"
+    site_display = gate4_manager.format_site_display(result.site_used)
     
-    progress_text = (
-        "━━━━━━━━━━━━━━━━━━━━━━\n"
-        "[⌬] 𝐅𝐍 𝐂𝐇𝐄𝐂𝐊𝐄𝐑 𝐋𝐈𝐕𝐄 𝐏𝐑𝐎𝐆𝐑𝐄𝐒𝐒 😈⚡\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"[✪] 𝐀𝐩𝐩𝐫𝐨𝐯𝐞𝐝: {approved}\n"
-        f"[✪] 𝐃𝐞𝐜𝐥𝐢𝐧𝐞𝐝: {declined}\n"
-        f"[✪] 𝐂𝐡𝐞𝐜𝐤𝐞𝐝: {checked}/{total}\n"
-        f"[✪] 𝐓𝐨𝐭𝐚𝐥: {total}\n"
-        f"[✪] 𝐃𝐮𝐫𝐚𝐭𝐢𝐨𝐧: {format_duration(duration)}\n"
-        f"[✪] 𝐀𝐯𝐠 𝐒𝐩𝐞𝐞𝐝: {speed:.1f} c/s\n"
-        f"[✪] 𝐒𝐮𝐜𝐜𝐞𝐬𝐬 𝐑𝐚𝐭𝐞: {success_rate:.2f}%\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n"
-        "[み] 𝐃𝐞𝐯: @FNxELECTRA ⚡😈\n"
-        "━━━━━━━━━━━━━━━━━━━━━━"
+    response_text = (
+        f"{header}\n\n"
+        f"[ϟ]𝗖𝗮𝗿𝗱 -» <code>{card}</code>\n"
+        f"[ϟ]𝗦𝘁𝗮𝘁𝘂𝘀 -» {status_display}\n"
+        f"[ϟ]𝗚𝗮𝘁𝗲𝘄𝗮𝘆 -» {gateway}\n"
+        f"[ϟ]𝗥𝗲𝘀𝗽𝗼𝗻𝘀𝗲 -» {result.response}\n\n"
+        f"[ϟ]𝗜𝗻𝗳𝗼 -» {card_info}\n"
+        f"[ϟ]𝗕𝗮𝗻𝗸 -» {issuer} 🏛\n"
+        f"[ϟ]𝗕𝗿𝗮𝗻𝗱 -» {result.brand or 'Unknown'}\n"
+        f"[ϟ]𝗧𝘆𝗽𝗲 -» {result.type or 'Unknown'}\n"
+        f"[ϟ]𝗟𝗲𝘃𝗲𝗹 -» {result.level or 'Unknown'}\n"
+        f"[ϟ]𝗖𝗼𝘂𝗻𝘁𝗿𝘆 -» {country_display}\n\n"
+        f"[⌬]𝗧𝗶𝗺𝗲 -» {time_taken}\n"
+        f"[⌬]𝗣𝗿𝗼𝘅𝘆 -» {proxy_status}\n"
+        f"[⌬]𝗦𝗶𝘁𝗲 -» {site_display}\n"
+        f"[⌬]𝗖𝗵𝐞𝐜𝐤𝐞𝐝 𝐁𝐲 -» {checked_by}\n"
+        f"[み]𝗕𝗼𝘁 -» <a href='https://t.me/FN_SH_BOT'>𝙁𝙉 𝙎𝙃𝙊𝙋𝙄𝙁𝙔</a>"
     )
     
-    try:
-        await context.bot.edit_message_text(
-            chat_id=chat_id,
-            message_id=message_id,
-            text=progress_text
+    await update.message.reply_text(response_text, parse_mode='HTML')
+    
+    if result.status != "Error" and result.status != "Captcha":
+        update_data = {"$set": {"last_used": datetime.utcnow()}}
+        
+        if result.status == "Charged":
+            update_data["$inc"] = {"success_count": 1}
+        elif result.status == "Approved":
+            update_data["$inc"] = {"approved_count": 1}
+        else:
+            update_data["$inc"] = {"fail_count": 1}
+        
+        user_sites_col.update_one(
+            {"user_id": user_id, "site": result.site_used},
+            update_data,
+            upsert=True
         )
-    except Exception as e:
-        logger.error(f"Error updating progress: {e}")
 
-async def send_final_results(update, context, data, duration, user_id):
-    """Send final results and hits file"""
+async def send_final_results_file(update, context, data, duration, user_id):
+    """Send final results file with categorized hits"""
     charged = data["charged"]
     approved = data["approved"]
     declined = data["declined"]
     total = data["checked"]
     hits = data["hits"]
     
-    # Calculate success rate
     if total > 0:
         success_rate = ((charged + approved) / total) * 100
     else:
         success_rate = 0
     
-    # Create hits file if any
     if hits:
         random_str = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
-        filename = f"FN-AUTO-SH-{random_str}.txt"
+        combined_filename = f"FN-AUTO-SH-{random_str}.txt"
+        
+        with open(combined_filename, "w") as f:
+            f.write(f"FN SHOPIFY HITS FILE\n")
+            f.write(f"Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"Total Cards: {total}\n")
+            f.write(f"Charged: {charged} | Approved: {approved} | Declined: {declined}\n")
+            f.write(f"Success Rate: {success_rate:.2f}%\n")
+            f.write(f"Duration: {format_duration(duration)}\n")
+            f.write("=" * 50 + "\n\n")
+            
+            if charged > 0:
+                f.write(f"=== CHARGED CARDS ({charged}) ===\n")
+                for card, status, response in hits:
+                    if status == "Charged":
+                        f.write(f"[CHARGED 🔥] {card} | Response: {response}\n")
+                f.write("\n")
+            
+            if approved > 0:
+                f.write(f"=== APPROVED CARDS ({approved}) ===\n")
+                for card, status, response in hits:
+                    if status == "Approved":
+                        f.write(f"[APPROVED ✅] {card} | Response: {response}\n")
+                f.write("\n")
+        
+        with open(combined_filename, "rb") as f:
+            await context.bot.send_document(
+                chat_id=update.effective_chat.id,
+                document=f,
+                filename=combined_filename,
+                caption=f"✅ Hits File ({len(hits)} cards)"
+            )
+        
+        os.remove(combined_filename)
+    
+    declined_cards = data.get("declined_list", [])
+    if declined_cards:
+        random_str = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+        filename = f"FN-DECLINED-{random_str}.txt"
         
         with open(filename, "w") as f:
-            for hit in hits:
-                f.write(f"{hit}\n")
+            f.write(f"=== DECLINED CARDS ({len(declined_cards)}) ===\n")
+            for card in declined_cards:
+                f.write(f"[DECLINED ⛔️] {card}\n")
         
-        # Send file
         with open(filename, "rb") as f:
             await context.bot.send_document(
                 chat_id=update.effective_chat.id,
                 document=f,
                 filename=filename,
-                caption=f"✅ Hits File ({len(hits)} cards)"
+                caption=f"❌ Declined Cards ({len(declined_cards)} cards)"
             )
         
-        # Clean up
         os.remove(filename)
     
-    # Send final stats
     final_stats = (
         "━━━━━━━━━━━━━━━━━━━━━━\n"
         "[⌬] 𝐅𝐍 𝐂𝐇𝐄𝐂𝐊𝐄𝐑 𝐇𝐈𝐓𝐒 😈⚡\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"[✪] 𝐀𝐩𝐩𝐫𝐨𝐯𝐞𝐝: {approved}\n"
-        f"[❌] 𝐃𝐞𝐜𝐥𝐢𝐧𝐞𝐝: {declined}\n"
+        f"[✪] 𝐂𝐡𝐚𝐫𝐠𝐞𝐝: {charged} 🔥\n"
+        f"[✪] 𝐀𝐩𝐩𝐫𝐨𝐯𝐞𝐝: {approved} ✅\n"
+        f"[❌] 𝐃𝐞𝐜𝐥𝐢𝐧𝐞𝐝: {declined} ⛔️\n"
         f"[✪] 𝐓𝐨𝐭𝐚𝐥: {total}\n"
         f"[✪] 𝐃𝐮𝐫𝐚𝐭𝐢𝐨𝐧: {format_duration(duration)}\n"
-        f"[✪] 𝐀𝐯𝐠 𝐒𝐩𝐞𝐞𝐝: {total/duration:.1f} c/s\n"
         f"[✪] 𝐒𝐮𝐜𝐜𝐞𝐬𝐬 𝐑𝐚𝐭𝐞: {success_rate:.2f}%\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n"
         "[み] 𝐃𝐞𝐯: @FNxELECTRA ⚡😈\n"
@@ -1596,7 +1644,6 @@ async def send_final_results(update, context, data, duration, user_id):
     
     await update.message.reply_text(final_stats)
 
-# /ashtxt command - TXT file check for Gate4 (up to 1000 cards)
 async def gate4_txt_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
@@ -1614,29 +1661,24 @@ async def gate4_txt_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # Check file size
     file_size = update.message.reply_to_message.document.file_size
-    if file_size > 1024 * 1024:  # 1MB limit
+    if file_size > 1024 * 1024:
         await update.message.reply_text("❌ File too large. Maximum size is 1MB.")
         return
     
-    # Start file processing
     asyncio.create_task(process_gate4_txt_file(update, context, user_id))
 
 async def process_gate4_txt_file(update, context, user_id):
     try:
-        # Download file
         file = await context.bot.get_file(update.message.reply_to_message.document.file_id)
         file_path = f"temp_{user_id}_{int(time.time())}.txt"
         await file.download_to_drive(file_path)
         
-        # Read cards
         with open(file_path, "r") as f:
             lines = f.readlines()
         
         cards = [line.strip() for line in lines if line.strip() and '|' in line]
         
-        # Limit to 1000 cards
         if len(cards) > 1000:
             cards = cards[:1000]
             await update.message.reply_text(f"⚠️ Limited to first 1000 cards (total: {len(cards)})")
@@ -1646,26 +1688,24 @@ async def process_gate4_txt_file(update, context, user_id):
             os.remove(file_path)
             return
         
-        # Process cards
         asyncio.create_task(process_gate4_mass_check(update, context, cards, user_id))
         
-        # Clean up
         os.remove(file_path)
+        
+        await asyncio.sleep(1)
+        await update.message.reply_text("⏳ Note: After this file check completes, you must wait 20 seconds before starting another file check.")
         
     except Exception as e:
         log_event("ERROR", f"Gate4 TXT check error: {str(e)}", user_id)
         await update.message.reply_text(f"❌ Error processing file: {str(e)}")
 
-# /chksite command - Check site manually or from file
 async def check_site_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
-    # Check if replying to file
     if update.message.reply_to_message and update.message.reply_to_message.document:
         await check_sites_file(update, context, user_id)
         return
     
-    # Manual site check
     if not context.args:
         await update.message.reply_text(
             "Usage:\n"
@@ -1680,7 +1720,6 @@ async def check_site_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     checking_msg = await update.message.reply_text(f"🔍 Checking site: {site}")
     
-    # Test site
     is_working, message = await gate4_manager.check_site(site)
     
     if is_working:
@@ -1704,12 +1743,10 @@ async def check_site_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def check_sites_file(update, context, user_id):
     """Check multiple sites from a file"""
     try:
-        # Download file
         file = await context.bot.get_file(update.message.reply_to_message.document.file_id)
         file_path = f"sites_check_{user_id}_{int(time.time())}.txt"
         await file.download_to_drive(file_path)
         
-        # Read sites
         with open(file_path, "r") as f:
             lines = f.readlines()
         
@@ -1736,14 +1773,11 @@ async def check_sites_file(update, context, user_id):
             else:
                 failed_sites.append(f"❌ {site} - {message}")
             
-            # Update progress every 10 sites
             if (i + 1) % 10 == 0:
                 await status_msg.edit_text(f"🔍 Checked {i+1}/{len(sites)} sites...")
             
-            # Small delay to avoid rate limiting
             await asyncio.sleep(1)
         
-        # Create results
         result_text = f"📊 Site Check Results ({len(sites)} total):\n\n"
         
         if working_sites:
@@ -1763,18 +1797,15 @@ async def check_sites_file(update, context, user_id):
         
         await update.message.reply_text(result_text)
         
-        # Clean up
         os.remove(file_path)
         
     except Exception as e:
         log_event("ERROR", f"Site check file error: {str(e)}", user_id)
         await update.message.reply_text(f"❌ Error: {str(e)}")
 
-# /ams command - Add mass sites to sites.txt (admin only)
 async def add_mass_sites(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
-    # Admin check
     if user_id != OWNER_ID and not is_admin(user_id):
         await update.message.reply_text("❌ You are not authorized to use this command.")
         return
@@ -1784,12 +1815,10 @@ async def add_mass_sites(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     try:
-        # Download file
         file = await context.bot.get_file(update.message.reply_to_message.document.file_id)
         file_path = f"mass_sites_{int(time.time())}.txt"
         await file.download_to_drive(file_path)
         
-        # Read sites
         with open(file_path, "r", encoding='utf-8') as f:
             lines = f.readlines()
         
@@ -1800,7 +1829,6 @@ async def add_mass_sites(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.remove(file_path)
             return
         
-        # Add sites
         added_count, total_count = gate4_manager.add_mass_sites(sites)
         
         await update.message.reply_text(
@@ -1811,20 +1839,17 @@ async def add_mass_sites(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"• Cache reloaded successfully"
         )
         
-        # Clean up
         os.remove(file_path)
         
     except Exception as e:
         log_event("ERROR", f"Add mass sites error: {str(e)}", user_id)
         await update.message.reply_text(f"❌ Error: {str(e)}")
 
-# /stats command - Check current mass check stats
 async def gate4_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     check_data = gate4_manager.get_user_check_data(user_id)
     if not check_data:
-        # Check database for active check
         active_check = active_mass_checks_col.find_one({"user_id": user_id, "status": "running"})
         if not active_check:
             await update.message.reply_text("ℹ️ No active mass check running.")
@@ -1835,7 +1860,6 @@ async def gate4_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     duration = time.time() - check_data["start_time"]
     
-    # Format stats
     checked = check_data["checked"]
     total = check_data["total"]
     charged = check_data.get("charged", 0)
@@ -1870,12 +1894,10 @@ async def gate4_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(progress_text)
 
-# /stop command for Gate4
 async def gate4_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     if gate4_manager.stop_user_check(user_id):
-        # Update database
         active_mass_checks_col.update_one(
             {"user_id": user_id, "status": "running"},
             {"$set": {"status": "stopped", "end_time": datetime.utcnow()}}
@@ -1893,6 +1915,26 @@ async def gate4_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    
+    if query.data.startswith('stats_'):
+        user_id = query.from_user.id
+        check_data = gate4_manager.get_user_check_data(user_id)
+        
+        if not check_data:
+            await query.answer("No active mass check", show_alert=True)
+            return
+        
+        if query.data == 'stats_charged':
+            await query.answer(f"Charged: {check_data['charged']}", show_alert=True)
+        elif query.data == 'stats_approved':
+            await query.answer(f"Approved: {check_data['approved']}", show_alert=True)
+        elif query.data == 'stats_declined':
+            await query.answer(f"Declined: {check_data['declined']}", show_alert=True)
+        elif query.data == 'stats_response':
+            await query.answer(f"Response: {check_data.get('current_response', 'Waiting...')}", show_alert=True)
+        elif query.data == 'stats_total':
+            await query.answer(f"Total: {check_data['checked']}/{check_data['total']}", show_alert=True)
+        return
     
     if query.data == 'help':
         help_text = (
@@ -2068,31 +2110,23 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     application = Application.builder().token(TOKEN).build()
     
-    # Add handlers with access control
-    
-    # Start command
+    # Add handlers
     application.add_handler(CommandHandler("start", start))
     
-    # Admin management commands
+    # Admin commands
     application.add_handler(CommandHandler("addadmin", addadmin))
     application.add_handler(CommandHandler("rmadmin", rmadmin))
     application.add_handler(CommandHandler("listadmins", listadmins))
-    
-    # Key management commands
     application.add_handler(CommandHandler("genkey", genkey))
     application.add_handler(CommandHandler("redeem", redeem))
     application.add_handler(CommandHandler("delkey", delkey))
-    
-    # Proxy management commands
     application.add_handler(CommandHandler("addproxy", add_proxy))
     application.add_handler(CommandHandler("delproxy", del_proxy))
     application.add_handler(CommandHandler("listproxies", list_proxies))
     application.add_handler(CommandHandler("reloadproxies", reload_proxies))
-    
-    # Broadcast command
     application.add_handler(CommandHandler("broadcast", broadcast))
     
-    # Gate1 commands (Shopify 1$)
+    # Gate1 commands
     application.add_handler(CommandHandler("sh", 
         lambda update, context: check_access(update, context, single_check)
     ))
@@ -2100,7 +2134,7 @@ def main():
         lambda update, context: check_access(update, context, multi_check)
     ))
     
-    # Gate2 commands (Shopify 14$)
+    # Gate2 commands
     application.add_handler(CommandHandler("sm", 
         lambda update, context: check_access(update, context, single_check_gate2)
     ))
@@ -2108,7 +2142,7 @@ def main():
         lambda update, context: check_access(update, context, multi_check_gate2)
     ))
     
-    # Gate3 commands (Live Check)
+    # Gate3 commands
     application.add_handler(CommandHandler("lv", 
         lambda update, context: check_access(update, context, single_check_gate3)
     ))
@@ -2116,7 +2150,7 @@ def main():
         lambda update, context: check_access(update, context, multi_check_gate3)
     ))
     
-    # Gate4 commands (Auto Shopify)
+    # Gate4 commands
     application.add_handler(CommandHandler("addsite", 
         lambda update, context: check_access(update, context, add_site)
     ))
@@ -2155,6 +2189,7 @@ def main():
     application.add_handler(CallbackQueryHandler(button, pattern='^gate2$'))
     application.add_handler(CallbackQueryHandler(button, pattern='^gate3$'))
     application.add_handler(CallbackQueryHandler(button, pattern='^gate4$'))
+    application.add_handler(CallbackQueryHandler(button, pattern='^stats_'))
     
     # Error handler
     application.add_error_handler(error_handler)
@@ -2164,7 +2199,6 @@ def main():
     print("🤖 FN Checker Bot is running...")
     print(f"👑 Owner ID: {OWNER_ID}")
     print(f"🔑 Total proxies loaded: {len(proxy_manager.proxies)}")
-    print(f"🌐 Gate4 sites loaded: {len(gate4_manager.sites_cache)}")
     application.run_polling()
 
 if __name__ == '__main__':
