@@ -141,7 +141,12 @@ class Gate4Manager:
         start_time = time.time()
         
         try:
-            cc_clean = cc.replace(" ", "").split('|')[0][:6]
+            # Extract first 6 digits (BIN)
+            cc_clean = cc.replace(" ", "").split('|')[0]
+            if len(cc_clean) < 6:
+                return {"success": False, "message": "Invalid card number", "elapsed_time": time.time() - start_time}
+            
+            bin_num = cc_clean[:6]
             
             connector = None
             if proxy:
@@ -165,29 +170,43 @@ class Gate4Manager:
                 except:
                     pass
             
-            async with aiohttp.ClientSession(connector=connector) as session:
-                async with session.get(f'https://bins.antipublic.cc/bins/{cc_clean}', timeout=15) as response:
+            # First try with proxy if available
+            if connector:
+                async with aiohttp.ClientSession(connector=connector) as session:
+                    async with session.get(f'https://bins.antipublic.cc/bins/{bin_num}', timeout=15) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            return self._process_bin_data(data, start_time)
+                        # If proxy fails, try without proxy
+                        
+            # Try without proxy
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f'https://bins.antipublic.cc/bins/{bin_num}', timeout=15) as response:
                     if response.status != 200:
-                        return {"success": False, "message": "BIN Lookup failed", "elapsed_time": time.time() - start_time}
+                        return {"success": False, "message": f"BIN Lookup failed with status {response.status}", "elapsed_time": time.time() - start_time}
                     
                     data = await response.json()
-                    return {
-                        "success": True,
-                        "bin": data.get('bin', ''),
-                        "bank": data.get('bank', ''),
-                        "brand": data.get('brand', ''),
-                        "type": data.get('type', ''),
-                        "level": data.get('level', ''),
-                        "country": data.get('country_name', ''),
-                        "flag": data.get('country_flag', '🏳️'),
-                        "currency": data.get('country_currencies', ['USD'])[0] if data.get('country_currencies') else "USD",
-                        "elapsed_time": time.time() - start_time
-                    }
+                    return self._process_bin_data(data, start_time)
                     
         except asyncio.TimeoutError:
             return {"success": False, "message": "BIN Lookup timed out", "elapsed_time": time.time() - start_time}
-        except:
-            return {"success": False, "message": "BIN Lookup error", "elapsed_time": time.time() - start_time}
+        except Exception as e:
+            return {"success": False, "message": f"BIN Lookup error: {str(e)}", "elapsed_time": time.time() - start_time}
+    
+    def _process_bin_data(self, data: Dict, start_time: float) -> Dict[str, Any]:
+        """Process BIN data response"""
+        return {
+            "success": True,
+            "bin": data.get('bin', ''),
+            "bank": data.get('bank', 'Unknown'),
+            "brand": data.get('brand', 'Unknown'),
+            "type": data.get('type', 'Unknown'),
+            "level": data.get('level', 'Unknown'),
+            "country": data.get('country_name', 'Unknown'),
+            "flag": data.get('country_flag', '🏳️'),
+            "currency": data.get('country_currencies', ['USD'])[0] if data.get('country_currencies') else "USD",
+            "elapsed_time": time.time() - start_time
+        }
     
     def format_proxy_display(self, proxy: str) -> str:
         """Format proxy for display (hide sensitive info)"""
@@ -305,14 +324,14 @@ class Gate4Manager:
                     else:
                         status = "Declined"
                     
-                    bin_data = {}
-                    if not test_mode:
-                        bin_data = await self.perform_bin_lookup(card, proxy)
-                    
+                    # Parse card info
                     card_parts = card.split('|')
                     if len(card_parts) >= 4:
-                        card_num = card_parts[0]
-                        card_info = f"{card_num[:6]}******{card_num[-4:]} | {card_parts[1]}/{card_parts[2]}"
+                        card_num = card_parts[0].strip()
+                        if len(card_num) >= 16:
+                            card_info = f"{card_num[:6]}******{card_num[-4:]} | {card_parts[1].strip()}/{card_parts[2].strip()}"
+                        else:
+                            card_info = card
                     else:
                         card_info = card
                     
@@ -323,21 +342,27 @@ class Gate4Manager:
                         gateway=data.get("Gateway", "Unknown"),
                         card=card,
                         card_info=card_info,
-                        issuer=bin_data.get("bank", "") if bin_data.get("success") else "",
-                        country=bin_data.get("country", "") if bin_data.get("success") else "",
-                        flag=bin_data.get("flag", "🏳️") if bin_data.get("success") else "🏳️",
-                        currency=bin_data.get("currency", "USD") if bin_data.get("success") else "USD",
+                        issuer="",
+                        country="Unknown",
+                        flag="🏳️",
+                        currency="USD",
                         elapsed_time=time.time() - start_time,
                         proxy_status=self.format_proxy_display(proxy) if proxy else "No Proxy",
                         site_used=site,
                         message=data.get("Response", "")
                     )
                     
-                    if bin_data.get("success"):
-                        result.bank = bin_data.get("bank", "")
-                        result.brand = bin_data.get("brand", "")
-                        result.type = bin_data.get("type", "")
-                        result.level = bin_data.get("level", "")
+                    # Perform BIN lookup if not in test mode
+                    if not test_mode:
+                        bin_data = await self.perform_bin_lookup(card, proxy)
+                        if bin_data.get("success"):
+                            result.bank = bin_data.get("bank", "Unknown")
+                            result.brand = bin_data.get("brand", "Unknown")
+                            result.type = bin_data.get("type", "Unknown")
+                            result.level = bin_data.get("level", "Unknown")
+                            result.country = bin_data.get("country", "Unknown")
+                            result.flag = bin_data.get("flag", "🏳️")
+                            result.currency = bin_data.get("currency", "USD")
                     
                     return result
                     
