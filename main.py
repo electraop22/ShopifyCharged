@@ -1538,11 +1538,15 @@ async def process_gate4_mass_check(update, context, cards, user_id):
         
         keyboard = [
             [
-                InlineKeyboardButton(f"CHARGED 🔥: 0", callback_data='stats_charged'),
+                InlineKeyboardButton(f"CHARGED 🔥: 0", callback_data='stats_charged')
+            ],
+            [
                 InlineKeyboardButton(f"APPROVED ✅: 0", callback_data='stats_approved')
             ],
             [
-                InlineKeyboardButton(f"DECLINED ⛔️: 0", callback_data='stats_declined'),
+                InlineKeyboardButton(f"DECLINED ⛔️: 0", callback_data='stats_declined')
+            ],
+            [
                 InlineKeyboardButton(f"RESPONSE: Waiting...", callback_data='stats_response')
             ],
             [
