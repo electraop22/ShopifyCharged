@@ -1403,31 +1403,45 @@ async def gate4_single_check(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user_cooldowns[user_id] = time.time()
 
 async def process_gate4_single_check(update, context, card, user_id):
-    site = await gate4_manager.get_site_for_user(user_id)
-    proxy = await proxy_manager.rotate_proxy()
-    result = await gate4_manager.check_card(card, site, proxy)
+    max_retries = 5
+    retry_count = 0
+    result = None
+    
+    while retry_count < max_retries:
+        site = await gate4_manager.get_site_for_user(user_id)
+        proxy = await proxy_manager.rotate_proxy()
+        result = await gate4_manager.check_card(card, site, proxy)
+        
+        # Check if we need to retry with new site
+        if result.should_retry:
+            retry_count += 1
+            if retry_count < max_retries:
+                # Don't show error message to user, just log it
+                print(f"Invalid response for card {card}. Retrying with different site... (Attempt {retry_count}/{max_retries})")
+                await asyncio.sleep(1)
+                continue
+            else:
+                # Max retries reached, show final error
+                await update.message.reply_text(f"❌ Error: Failed after {max_retries} attempts. {result.message}")
+                return
+        else:
+            # Valid response received, break out of retry loop
+            break
     
     try:
         await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.message_id + 1)
     except:
         pass
     
-    if result.status == "Error":
+    # If after all retries we still have should_retry=True, show error
+    if result.should_retry:
         await update.message.reply_text(f"❌ Error: {result.message}")
-        if "Product ID is empty" in result.message:
-            await update.message.reply_text("⚠️ Site removed due to 'Product id is empty'. Please try again with different site.")
         return
     
-    if result.status == "Captcha":
-        await update.message.reply_text(f"⚠️ Captcha Detected on site. Trying different site...")
-        for _ in range(3):
-            site = await gate4_manager.get_site_for_user(user_id)
-            proxy = await proxy_manager.rotate_proxy()
-            result = await gate4_manager.check_card(card, site, proxy)
-            
-            if result.status != "Captcha":
-                break
-            await asyncio.sleep(1)
+    # If result is Error but shouldn't retry (like declined), still show result
+    if result.status == "Error" and not result.should_retry:
+        await update.message.reply_text(f"❌ Error: {result.message}")
+        return
     
     checked_by = f"<a href='tg://user?id={update.effective_user.id}'>{update.effective_user.first_name}</a>"
     time_taken = f"{result.elapsed_time:.2f}s"
@@ -1441,9 +1455,13 @@ async def process_gate4_single_check(update, context, card, user_id):
         header = "𝐀𝐏𝐏𝐑𝐎𝐕𝐄𝐃"
         status_display = "Approved ✅"
         gateway = f"Shopify ${result.price}"
-    else:
+    elif result.status == "Declined":
         header = "𝐃𝐄𝐂𝐋𝐈𝐍𝐄𝐃"
         status_display = "Declined ❌"
+        gateway = f"Shopify ${result.price}"
+    else:
+        header = "𝐄𝐑𝐑𝐎𝐑"
+        status_display = "Error ⚠️"
         gateway = f"Shopify ${result.price}"
     
     country_display = f"{result.country}{result.flag} - {result.currency}" if result.country else "Unknown"
@@ -1479,7 +1497,7 @@ async def process_gate4_single_check(update, context, card, user_id):
             update_data["$inc"] = {"success_count": 1}
         elif result.status == "Approved":
             update_data["$inc"] = {"approved_count": 1}
-        else:
+        elif result.status == "Declined":
             update_data["$inc"] = {"fail_count": 1}
         
         user_sites_col.update_one(
@@ -1538,15 +1556,11 @@ async def process_gate4_mass_check(update, context, cards, user_id):
         
         keyboard = [
             [
-                InlineKeyboardButton(f"CHARGED 🔥: 0", callback_data='stats_charged')
-            ],
-            [
+                InlineKeyboardButton(f"CHARGED 🔥: 0", callback_data='stats_charged'),
                 InlineKeyboardButton(f"APPROVED ✅: 0", callback_data='stats_approved')
             ],
             [
-                InlineKeyboardButton(f"DECLINED ⛔️: 0", callback_data='stats_declined')
-            ],
-            [
+                InlineKeyboardButton(f"DECLINED ⛔️: 0", callback_data='stats_declined'),
                 InlineKeyboardButton(f"RESPONSE: Waiting...", callback_data='stats_response')
             ],
             [
@@ -1573,34 +1587,56 @@ async def process_gate4_mass_check(update, context, cards, user_id):
             if not check_data or check_data.get("stop"):
                 break
             
-            max_retries = 3
+            max_retries = 5
             retry_count = 0
             result = None
+            retry_message_sent = False
             
             while retry_count < max_retries:
                 site = await gate4_manager.get_site_for_user(user_id)
                 proxy = await proxy_manager.rotate_proxy()
                 result = await gate4_manager.check_card(card, site, proxy)
                 
-                # If we get "Product id is empty" or other site errors, retry with new site
-                if result.status == "Error" and "Product ID is empty" in result.message:
+                # Check if we need to retry with new site
+                if result.should_retry:
                     retry_count += 1
                     if retry_count < max_retries:
-                        await context.bot.send_message(
-                            chat_id=update.effective_chat.id,
-                            text=f"⚠️ Site error for card {i+1}, retrying with different site... (Attempt {retry_count}/{max_retries})"
-                        )
+                        # Only send retry message once per card
+                        if not retry_message_sent:
+                            retry_message = await context.bot.send_message(
+                                chat_id=update.effective_chat.id,
+                                text=f"⚠️ Invalid response for card {i+1}, switching to different site..."
+                            )
+                            retry_message_sent = True
+                        else:
+                            # Update existing retry message
+                            try:
+                                await retry_message.edit_text(
+                                    f"⚠️ Invalid response for card {i+1}, trying different site... (Attempt {retry_count}/{max_retries})"
+                                )
+                            except:
+                                pass
                         await asyncio.sleep(1)
                         continue
-                
-                # If captcha, try different site
-                if result.status == "Captcha":
-                    retry_count += 1
-                    if retry_count < max_retries:
-                        await asyncio.sleep(1)
-                        continue
-                
-                break
+                    else:
+                        # Max retries reached, mark as error
+                        if retry_message_sent:
+                            try:
+                                await retry_message.delete()
+                            except:
+                                pass
+                        gate4_manager.update_user_check(user_id, result)
+                        # Don't show error to user, just log and continue to next card
+                        print(f"Max retries reached for card {card}. Error: {result.message}")
+                        break
+                else:
+                    # Valid response received
+                    if retry_message_sent:
+                        try:
+                            await retry_message.delete()
+                        except:
+                            pass
+                    break
             
             gate4_manager.update_user_check(user_id, result)
             
@@ -1653,6 +1689,10 @@ async def process_gate4_mass_check(update, context, cards, user_id):
 
 async def send_individual_result(update, context, card, result, user_id):
     """Send individual card result for charged/approved cards"""
+    # Only send result if it's Charged or Approved
+    if result.status != "Charged" and result.status != "Approved":
+        return
+    
     checked_by = f"<a href='tg://user?id={update.effective_user.id}'>{update.effective_user.first_name}</a>"
     time_taken = f"{result.elapsed_time:.2f}s"
     proxy_status = result.proxy_status
@@ -1661,12 +1701,10 @@ async def send_individual_result(update, context, card, result, user_id):
         header = "𝐂𝐇𝐀𝐑𝐆𝐄𝐃"
         status_display = "Charged 🔥"
         gateway = f"Shopify ${result.price}"
-    elif result.status == "Approved":
+    else:  # Approved
         header = "𝐀𝐏𝐏𝐑𝐎𝐕𝐄𝐃"
         status_display = "Approved ✅"
         gateway = f"Shopify ${result.price}"
-    else:
-        return
     
     country_display = f"{result.country}{result.flag} - {result.currency}" if result.country else "Unknown"
     card_info = result.card_info
@@ -1694,21 +1732,21 @@ async def send_individual_result(update, context, card, result, user_id):
     
     await update.message.reply_text(response_text, parse_mode='HTML')
     
-    if result.status != "Error" and result.status != "Captcha":
-        update_data = {"$set": {"last_used": datetime.utcnow()}}
-        
-        if result.status == "Charged":
-            update_data["$inc"] = {"success_count": 1}
-        elif result.status == "Approved":
-            update_data["$inc"] = {"approved_count": 1}
-        else:
-            update_data["$inc"] = {"fail_count": 1}
-        
-        user_sites_col.update_one(
-            {"user_id": user_id, "site": result.site_used},
-            update_data,
-            upsert=True
-        )
+    # Update site usage statistics
+    update_data = {"$set": {"last_used": datetime.utcnow()}}
+    
+    if result.status == "Charged":
+        update_data["$inc"] = {"success_count": 1}
+    elif result.status == "Approved":
+        update_data["$inc"] = {"approved_count": 1}
+    else:
+        update_data["$inc"] = {"fail_count": 1}
+    
+    user_sites_col.update_one(
+        {"user_id": user_id, "site": result.site_used},
+        update_data,
+        upsert=True
+    )
 
 async def send_final_results_file(update, context, data, duration, user_id):
     """Send final results file with categorized hits"""
@@ -2312,19 +2350,19 @@ def main():
         lambda update, context: check_access(update, context, add_site)
     ))
     application.add_handler(CommandHandler("addsitep", 
-        lambda update, context: check_access(update, context, add_site)
+        lambda update, context: check_access(update, context, addsitep)
     ))
     application.add_handler(CommandHandler("rmsite", 
         lambda update, context: check_access(update, context, remove_site)
     ))
     application.add_handler(CommandHandler("rmsitep", 
-        lambda update, context: check_access(update, context, remove_site)
+        lambda update, context: check_access(update, context, rmsitep)
     ))
     application.add_handler(CommandHandler("sitelist", 
         lambda update, context: check_access(update, context, list_sites)
     ))
     application.add_handler(CommandHandler("sitelistp", 
-        lambda update, context: check_access(update, context, list_sites)
+        lambda update, context: check_access(update, context, listsitesp)
     ))
     application.add_handler(CommandHandler("chksite", 
         lambda update, context: check_access(update, context, check_site_command)
