@@ -81,6 +81,7 @@ class Gate4Manager:
                 self.global_sites = ["https://scorenn.com"]
                 self.sites_cache = ["https://scorenn.com"]
         except Exception as e:
+            print(f"Error loading global sites: {e}")
             self.global_sites = ["https://scorenn.com"]
             self.sites_cache = ["https://scorenn.com"]
     
@@ -102,10 +103,31 @@ class Gate4Manager:
         self.last_site_load = time.time()
     
     async def get_site_for_user(self, user_id: int) -> str:
-        """Get site for user - first check user's sites, then global sites.txt"""
-        user_sites = list(user_sites_col.find({"user_id": user_id, "active": True}))
-        user_sites_list = [site["site"] for site in user_sites]
+        """Get site for user - first check user's personal sites, then regular sites, then global"""
+        # First, try user's personal sites
+        personal_sites = list(user_sites_col.find({
+            "user_id": user_id, 
+            "active": True,
+            "personal": True
+        }))
         
+        if personal_sites:
+            personal_sites_list = [site["site"] for site in personal_sites]
+            personal_sites_list = [
+                site for site in personal_sites_list 
+                if site not in self.bad_sites and site not in self.captcha_sites
+            ]
+            if personal_sites_list:
+                return random.choice(personal_sites_list)
+        
+        # Then try user's regular sites
+        user_sites = list(user_sites_col.find({
+            "user_id": user_id, 
+            "active": True,
+            "personal": {"$ne": True}  # Not personal sites
+        }))
+        
+        user_sites_list = [site["site"] for site in user_sites]
         if user_sites_list:
             user_sites_list = [
                 site for site in user_sites_list 
@@ -114,6 +136,7 @@ class Gate4Manager:
             if user_sites_list:
                 return random.choice(user_sites_list)
         
+        # Finally, use global sites
         current_time = time.time()
         if not self.sites_cache or (current_time - self.last_site_load) > self.site_load_interval:
             self.reload_sites_cache()
@@ -124,14 +147,52 @@ class Gate4Manager:
         return "https://scorenn.com"
     
     async def check_site(self, site: str) -> Tuple[bool, str]:
-        """Check if a site works with the API"""
+        """Check if a site works with the API - Fixed to check actual API response"""
         try:
             test_card = "4242424242424242|01|29|123"
             result = await self.check_card(test_card, site, test_mode=True)
             
-            if result.status == "Error" or "HCAPTCHA" in result.response.upper():
+            # Check if we got a valid API response
+            if result.status == "Error":
                 return False, result.message
-            return True, "Site is working"
+            
+            # Check response for specific patterns that indicate working site
+            response_upper = result.response.upper()
+            
+            # Acceptable responses that mean site is working
+            valid_responses = [
+                "CARD_DECLINED",
+                "ActionRequired", 
+                "ACTION_REQUIRED",
+                "thank",
+                "Thank",
+                "Thank You",
+                "thank you"
+            ]
+            
+            # Also check if response contains any valid pattern
+            is_valid_response = any(keyword in response_upper for keyword in valid_responses)
+            
+            # Or if status is True (from JSON)
+            is_valid_status = result.status in ["Charged", "Approved", "Declined"]
+            
+            if is_valid_response or is_valid_status:
+                return True, f"Site working - Response: {result.response}"
+            else:
+                # If we get "Product id is empty" or other errors, site is not working
+                if "PRODUCT ID IS EMPTY" in response_upper or "PRODUCT ID IS EMPTY" in result.message.upper():
+                    self.mark_site_bad(site)
+                    return False, "Product ID is empty - Site removed"
+                
+                # Mark as captcha if detected
+                if "HCAPTCHA" in response_upper or "CAPTCHA" in response_upper:
+                    self.captcha_sites[site] = time.time()
+                    return False, "Captcha detected"
+                
+                # Any other response means site is not working
+                self.mark_site_bad(site)
+                return False, f"Invalid response: {result.response}"
+                
         except Exception as e:
             return False, str(e)
     
@@ -320,15 +381,34 @@ class Gate4Manager:
                 
                 try:
                     data = json.loads(response_text)
-                    response_msg = data.get("Response", "").upper()
+                    response_msg = data.get("Response", "")
+                    status_msg = str(data.get("Status", "")).lower()
                     
-                    if "HCAPTCHA" in response_msg or "CAPTCHA" in response_msg:
+                    # Check for "Product id is empty" error
+                    response_upper = response_msg.upper()
+                    if "PRODUCT ID IS EMPTY" in response_upper:
+                        if not test_mode:
+                            self.mark_site_bad(site)
+                        return Gate4Result(
+                            status="Error",
+                            response="Product ID is empty",
+                            price="0.00",
+                            gateway="Unknown",
+                            card=card,
+                            elapsed_time=time.time() - start_time,
+                            proxy_status=self.format_proxy_display(proxy) if proxy else "No Proxy",
+                            site_used=site,
+                            message="Site removed due to 'Product id is empty'"
+                        )
+                    
+                    # Check for captcha
+                    if "HCAPTCHA" in response_upper or "CAPTCHA" in response_upper:
                         self.captcha_sites[site] = time.time()
                         return Gate4Result(
                             status="Captcha",
-                            response=data.get("Response", "HCAPTCHA DETECTED"),
-                            price="0.00",
-                            gateway="Unknown",
+                            response=response_msg,
+                            price=data.get("Price", "0.00"),
+                            gateway=data.get("Gateway", "Unknown"),
                             card=card,
                             elapsed_time=time.time() - start_time,
                             proxy_status=self.format_proxy_display(proxy) if proxy else "No Proxy",
@@ -336,14 +416,18 @@ class Gate4Manager:
                             message="HCAPTCHA DETECTED"
                         )
                     
-                    # Determine status
-                    if any(keyword in response_msg for keyword in ["Thank", "Thank You", "SUCCESSFUL"]):
+                    # Determine status based on response
+                    response_upper = response_msg.upper()
+                    
+                    if any(keyword in response_upper for keyword in ["THANK", "THANK YOU", "SUCCESSFUL"]):
                         status = "Charged"
-                    elif "ACTIONREQUIRED" in response_msg or "ActionRequired" in response_msg or "APPROVED" in response_msg:
+                    elif "ACTIONREQUIRED" in response_upper or "ACTION REQUIRED" in response_upper:
                         status = "Approved"
-                    elif "CARD_DECLINED" in response_msg or "DECLINED" in response_msg:
+                    elif "APPROVED" in response_upper:
+                        status = "Approved"
+                    elif "CARD_DECLINED" in response_upper or "DECLINED" in response_upper:
                         status = "Declined"
-                    elif data.get("Status", "").lower() == "true":
+                    elif status_msg == "true":
                         status = "Approved"
                     else:
                         status = "Declined"
@@ -359,10 +443,10 @@ class Gate4Manager:
                     else:
                         card_info = card
                     
-                    # Create result with default values
+                    # Create result
                     result = Gate4Result(
                         status=status,
-                        response=data.get("Response", "Unknown"),
+                        response=response_msg,
                         price=data.get("Price", "0.00"),
                         gateway=data.get("Gateway", "Unknown"),
                         card=card,
@@ -374,7 +458,7 @@ class Gate4Manager:
                         elapsed_time=time.time() - start_time,
                         proxy_status=self.format_proxy_display(proxy) if proxy else "No Proxy",
                         site_used=site,
-                        message=data.get("Response", ""),
+                        message=response_msg,
                         bank="Unknown",
                         brand="Unknown",
                         type="Unknown",
@@ -397,11 +481,27 @@ class Gate4Manager:
                             result.currency = bin_data.get("currency", "USD")
                     
                     return result
-                    
-                except json.JSONDecodeError as e:
-                    print(f"JSON decode error: {str(e)}")
+                        
+                except json.JSONDecodeError:
                     # Handle non-JSON response
                     response_upper = response_text.upper()
+                    
+                    # Check for "Product id is empty" in raw response
+                    if "PRODUCT ID IS EMPTY" in response_upper:
+                        if not test_mode:
+                            self.mark_site_bad(site)
+                        return Gate4Result(
+                            status="Error",
+                            response="Product ID is empty",
+                            price="0.00",
+                            gateway="Unknown",
+                            card=card,
+                            elapsed_time=time.time() - start_time,
+                            proxy_status=self.format_proxy_display(proxy) if proxy else "No Proxy",
+                            site_used=site,
+                            message="Site removed due to 'Product id is empty'"
+                        )
+                    
                     if "HCAPTCHA" in response_upper or "CAPTCHA" in response_upper:
                         self.captcha_sites[site] = time.time()
                         return Gate4Result(
@@ -416,9 +516,14 @@ class Gate4Manager:
                             message="HCAPTCHA DETECTED"
                         )
                     
-                    if "THANK" in response_upper or "SUCCESS" in response_upper:
+                    # Try to determine status from raw text
+                    if any(keyword in response_upper for keyword in ["Thank", "Thank You", "thank", "thank you]):
                         status = "Charged"
+                    elif any(keyword in response_upper for keyword in ["ACTIONREQUIRED", "ActionRequired"]):
+                        status = "Approved"
                     elif "DECLINED" in response_upper:
+                        status = "Declined"
+                    elif "CARD_DECLINED" in response_upper:
                         status = "Declined"
                     else:
                         status = "Error"
@@ -432,7 +537,7 @@ class Gate4Manager:
                         elapsed_time=time.time() - start_time,
                         proxy_status=self.format_proxy_display(proxy) if proxy else "No Proxy",
                         site_used=site,
-                        message=f"Invalid JSON: {response_text[:100]}"
+                        message=f"Raw response: {response_text[:100]}"
                     )
                     
         except asyncio.TimeoutError:
@@ -464,10 +569,14 @@ class Gate4Manager:
     def mark_site_bad(self, site: str):
         """Mark a site as bad (not working)"""
         self.bad_sites.add(site)
+        
+        # Update in database - mark as inactive
         user_sites_col.update_many(
             {"site": site},
             {"$set": {"active": False, "marked_bad_at": datetime.utcnow()}}
         )
+        
+        # Also remove from cache
         if site in self.sites_cache:
             self.sites_cache.remove(site)
     
@@ -549,7 +658,8 @@ class Gate4Manager:
             self.load_global_sites()
             return added_count, len(existing_sites)
             
-        except:
+        except Exception as e:
+            print(f"Error adding mass sites: {e}")
             return 0, 0
     
     async def test_bin_lookup(self, bin_number: str):
