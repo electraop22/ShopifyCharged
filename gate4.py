@@ -163,11 +163,10 @@ class Gate4Manager:
             valid_responses = [
                 "CARD_DECLINED",
                 "ActionRequired", 
-                "ACTION_REQUIRED",
-                "thank",
                 "Thank",
                 "Thank You",
-                "thank you"
+                "thank you",
+
             ]
             
             # Also check if response contains any valid pattern
@@ -517,9 +516,9 @@ class Gate4Manager:
                         )
                     
                     # Try to determine status from raw text
-                    if any(keyword in response_upper for keyword in ["Thank", "Thank You", "thank", "thank you]):
+                    if any(keyword in response_upper for keyword in ["Thank", "Thank You", "thank", "thank you"]):
                         status = "Charged"
-                    elif any(keyword in response_upper for keyword in ["ACTIONREQUIRED", "ActionRequired"]):
+                    elif any(keyword in response_upper for keyword in ["ActionRequired"]):
                         status = "Approved"
                     elif "DECLINED" in response_upper:
                         status = "Declined"
