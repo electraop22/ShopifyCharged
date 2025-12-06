@@ -34,8 +34,8 @@ broadcast_col = db["broadcast"]
 user_limits_col = db["user_limits"]
 proxies_col = db["proxiess"]
 admins_col = db["admins"]
-user_sites_col = db["user_sites"]
-mass_checks_col = db["mass_checks"]
+user_sites_col = db["user_sitess"]
+mass_checks_col = db["mass_checkss"]
 active_mass_checks_col = db["active_mass_checks"]
 
 # Logging Setup
