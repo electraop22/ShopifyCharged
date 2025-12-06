@@ -41,6 +41,7 @@ class Gate4Result:
     brand: str = ""
     type: str = ""
     level: str = ""
+    should_retry: bool = False  # New field to indicate if we should retry with new site
 
 class Gate4Manager:
     def __init__(self):
@@ -146,45 +147,50 @@ class Gate4Manager:
         
         return "https://scorenn.com"
     
+    def is_valid_response(self, response: str) -> bool:
+        """Check if the response is a valid Shopify response"""
+        response_upper = response.upper()
+        
+        # Valid responses that indicate the site is working properly
+        valid_responses = [
+            "CARD_DECLINED",
+            "ActionRequired",
+            "ACTION REQUIRED",
+            "Thank You",
+            "Thank",
+            "thank",
+            "thank you",
+            "3D_AUTHENTICATION"
+        ]
+        
+        # Check if any valid response pattern is in the response
+        for valid_resp in valid_responses:
+            if valid_resp in response_upper:
+                return True
+        
+        return False
+    
     async def check_site(self, site: str) -> Tuple[bool, str]:
-        """Check if a site works with the API - Fixed to check actual API response"""
+        """Check if a site works with the API"""
         try:
             test_card = "4242424242424242|01|29|123"
             result = await self.check_card(test_card, site, test_mode=True)
             
             # Check if we got a valid API response
-            if result.status == "Error":
+            if result.status == "Error" or result.should_retry:
                 return False, result.message
             
-            # Check response for specific patterns that indicate working site
-            response_upper = result.response.upper()
-            
-            # Acceptable responses that mean site is working
-            valid_responses = [
-                "CARD_DECLINED",
-                "ActionRequired", 
-                "Thank",
-                "Thank You",
-                "thank you",
-
-            ]
-            
-            # Also check if response contains any valid pattern
-            is_valid_response = any(keyword in response_upper for keyword in valid_responses)
-            
-            # Or if status is True (from JSON)
-            is_valid_status = result.status in ["Charged", "Approved", "Declined"]
-            
-            if is_valid_response or is_valid_status:
+            # Check if response is valid
+            if self.is_valid_response(result.response):
                 return True, f"Site working - Response: {result.response}"
             else:
                 # If we get "Product id is empty" or other errors, site is not working
-                if "PRODUCT ID IS EMPTY" in response_upper or "PRODUCT ID IS EMPTY" in result.message.upper():
+                if "PRODUCT ID IS EMPTY" in result.response.upper():
                     self.mark_site_bad(site)
                     return False, "Product ID is empty - Site removed"
                 
                 # Mark as captcha if detected
-                if "HCAPTCHA" in response_upper or "CAPTCHA" in response_upper:
+                if "HCAPTCHA" in result.response.upper() or "CAPTCHA" in result.response.upper():
                     self.captcha_sites[site] = time.time()
                     return False, "Captcha detected"
                 
@@ -375,7 +381,8 @@ class Gate4Manager:
                         elapsed_time=time.time() - start_time,
                         proxy_status=self.format_proxy_display(proxy) if proxy else "No Proxy",
                         site_used=site,
-                        message=f"API returned status {response.status}"
+                        message=f"API returned status {response.status}",
+                        should_retry=True
                     )
                 
                 try:
@@ -397,7 +404,8 @@ class Gate4Manager:
                             elapsed_time=time.time() - start_time,
                             proxy_status=self.format_proxy_display(proxy) if proxy else "No Proxy",
                             site_used=site,
-                            message="Site removed due to 'Product id is empty'"
+                            message="Site removed due to 'Product id is empty'",
+                            should_retry=True
                         )
                     
                     # Check for captcha
@@ -412,15 +420,33 @@ class Gate4Manager:
                             elapsed_time=time.time() - start_time,
                             proxy_status=self.format_proxy_display(proxy) if proxy else "No Proxy",
                             site_used=site,
-                            message="HCAPTCHA DETECTED"
+                            message="HCAPTCHA DETECTED",
+                            should_retry=True
+                        )
+                    
+                    # Check if response is valid
+                    if not self.is_valid_response(response_msg):
+                        if not test_mode:
+                            self.mark_site_bad(site)
+                        return Gate4Result(
+                            status="Error",
+                            response=response_msg,
+                            price=data.get("Price", "0.00"),
+                            gateway=data.get("Gateway", "Unknown"),
+                            card=card,
+                            elapsed_time=time.time() - start_time,
+                            proxy_status=self.format_proxy_display(proxy) if proxy else "No Proxy",
+                            site_used=site,
+                            message=f"Invalid response format: {response_msg}",
+                            should_retry=True
                         )
                     
                     # Determine status based on response
                     response_upper = response_msg.upper()
                     
-                    if any(keyword in response_upper for keyword in ["THANK", "THANK YOU", "SUCCESSFUL"]):
+                    if any(keyword in response_upper for keyword in ["Thank", "Thank You", "thank"]):
                         status = "Charged"
-                    elif "ACTIONREQUIRED" in response_upper or "ACTION REQUIRED" in response_upper:
+                    elif "ActionRequired" in response_upper or "3D_AUTHENTICATION" in response_upper:
                         status = "Approved"
                     elif "APPROVED" in response_upper:
                         status = "Approved"
@@ -461,7 +487,8 @@ class Gate4Manager:
                         bank="Unknown",
                         brand="Unknown",
                         type="Unknown",
-                        level="Unknown"
+                        level="Unknown",
+                        should_retry=False
                     )
                     
                     # Perform BIN lookup if not in test mode
@@ -498,7 +525,8 @@ class Gate4Manager:
                             elapsed_time=time.time() - start_time,
                             proxy_status=self.format_proxy_display(proxy) if proxy else "No Proxy",
                             site_used=site,
-                            message="Site removed due to 'Product id is empty'"
+                            message="Site removed due to 'Product id is empty'",
+                            should_retry=True
                         )
                     
                     if "HCAPTCHA" in response_upper or "CAPTCHA" in response_upper:
@@ -512,20 +540,38 @@ class Gate4Manager:
                             elapsed_time=time.time() - start_time,
                             proxy_status=self.format_proxy_display(proxy) if proxy else "No Proxy",
                             site_used=site,
-                            message="HCAPTCHA DETECTED"
+                            message="HCAPTCHA DETECTED",
+                            should_retry=True
+                        )
+                    
+                    # Check if raw text contains valid response
+                    if not self.is_valid_response(response_text):
+                        if not test_mode:
+                            self.mark_site_bad(site)
+                        return Gate4Result(
+                            status="Error",
+                            response=response_text[:100],
+                            price="0.00",
+                            gateway="Unknown",
+                            card=card,
+                            elapsed_time=time.time() - start_time,
+                            proxy_status=self.format_proxy_display(proxy) if proxy else "No Proxy",
+                            site_used=site,
+                            message=f"Invalid raw response: {response_text[:100]}",
+                            should_retry=True
                         )
                     
                     # Try to determine status from raw text
                     if any(keyword in response_upper for keyword in ["Thank", "Thank You", "thank", "thank you"]):
                         status = "Charged"
-                    elif any(keyword in response_upper for keyword in ["ActionRequired"]):
+                    elif any(keyword in response_upper for keyword in ["ActionRequired", "3D_AUTHENTICATION"]):
                         status = "Approved"
                     elif "DECLINED" in response_upper:
                         status = "Declined"
                     elif "CARD_DECLINED" in response_upper:
                         status = "Declined"
                     else:
-                        status = "Error"
+                        status = "Declined"
                     
                     return Gate4Result(
                         status=status,
@@ -536,7 +582,8 @@ class Gate4Manager:
                         elapsed_time=time.time() - start_time,
                         proxy_status=self.format_proxy_display(proxy) if proxy else "No Proxy",
                         site_used=site,
-                        message=f"Raw response: {response_text[:100]}"
+                        message=f"Raw response: {response_text[:100]}",
+                        should_retry=False
                     )
                     
         except asyncio.TimeoutError:
@@ -549,7 +596,8 @@ class Gate4Manager:
                 elapsed_time=time.time() - start_time,
                 proxy_status=self.format_proxy_display(proxy) if proxy else "No Proxy",
                 site_used=site,
-                message="Request timeout"
+                message="Request timeout",
+                should_retry=True
             )
         except Exception as e:
             print(f"Check card exception: {str(e)}")
@@ -562,7 +610,8 @@ class Gate4Manager:
                 elapsed_time=time.time() - start_time,
                 proxy_status=self.format_proxy_display(proxy) if proxy else "No Proxy",
                 site_used=site,
-                message=str(e)
+                message=str(e),
+                should_retry=True
             )
     
     def mark_site_bad(self, site: str):
