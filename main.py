@@ -692,7 +692,7 @@ async def process_single_check(update, context, card, user_id):
         response_text = (
             f"𝐂𝐇𝐀𝐑𝐆𝐄𝐃 1$🔥🔥\n\n"
             f"[ϟ]𝗖𝗮𝗿𝗱 -» <code>{card}</code>\n"
-            f"[ϟ]𝗦𝘁𝗮𝘁𝘂𝘀 -» Charged 🔥\n"
+            f"[ϟ]𝗦𝘁𝗮𝘁𝘂𝘁𝘀 -» Charged 🔥\n"
             f"[ϟ]𝗚𝗮𝘁𝗲𝘄𝗮𝘆 -» Shopify 1$\n"
             f"[ϟ]𝗥𝗲𝘀𝗽𝗼𝗻𝘀𝗲 -» {response}\n\n"
             f"[ϟ]𝗜𝗻𝗳𝗼 -» {card_info}\n"
@@ -707,7 +707,7 @@ async def process_single_check(update, context, card, user_id):
         response_text = (
             f"𝐀𝐏𝐏𝐑𝐎𝐕𝐄𝐃 ✅\n\n"
             f"[ϟ]𝗖𝗮𝗿𝗱 -» <code>{card}</code>\n"
-            f"[ϟ]𝗦𝘁𝗮𝘁𝘂𝘀 -» Approved ✅\n"
+            f"[ϟ]𝗦𝘁𝗮𝘁𝘂𝘁𝘀 -» Approved ✅\n"
             f"[ϟ]𝗚𝗮𝘁𝗲𝘄𝗮𝘆 -» Shopify 1$\n"
             f"[ϟ]𝗥𝗲𝘀𝗽𝗼𝗻𝘀𝗲 -» {response}\n\n"
             f"[ϟ]𝗜𝗻𝗳𝗼 -» {card_info}\n"
@@ -881,7 +881,7 @@ async def process_single_check_gate2(update, context, card, user_id):
         response_text = (
             f"𝐀𝐏𝐏𝐑𝐎𝐕𝐄𝐃 ✅\n\n"
             f"[ϟ]𝗖𝗮𝗿𝗱 -» <code>{card}</code>\n"
-            f"[ϟ]𝗦𝘁𝗮𝘁𝘂𝘀 -» Approved ✅\n"
+            f"[ϟ]𝗦𝘁𝗮𝘁𝘂𝘁𝘀 -» Approved ✅\n"
             f"[ϟ]𝗚𝗮𝘁𝗲𝘄𝗮𝘆 -» Shopify 14$\n"
             f"[ϟ]𝗥𝗲𝘀𝗽𝗼𝗻𝘀𝗲 -» {response}\n\n"
             f"[ϟ]𝗜𝗻𝗳𝗼 -» {card_info}\n"
@@ -896,9 +896,9 @@ async def process_single_check_gate2(update, context, card, user_id):
         response_text = (
             f"𝐃𝐞𝐜𝐥𝐢𝐧𝐞𝐝 ❌\n\n"
             f"[ϟ]𝗖𝗮𝗿𝗱 -» <code>{card}</code>\n"
-            f"[ϟ]𝗦𝘁𝗮𝘁𝘂𝘀 -» Declined ❌\n"
+            f"[ϟ]𝗦𝘁𝗮𝘁𝘂𝘁𝘀 -» Declined ❌\n"
             f"[ϟ]𝗚𝗮𝘁𝗲𝘄𝗮𝘆 -» Shopify 14$\n"
-            f"[ϟ]𝗥𝗲𝘀𝗽𝗼𝗻𝘁𝘀 -» {response}\n\n"
+            f"[ϟ]𝗥𝗲𝘀𝗽𝗼𝗻𝘀𝗲 -» {response}\n\n"
             f"[ϟ]𝗜𝗻𝗳𝗼 -» {card_info}\n"
             f"[ϟ]𝗜𝘀𝘀𝘂𝗲𝗿 -» {issuer} 🏛\n"
             f"[ϟ]𝗖𝗼𝘂𝗻𝘁𝗿𝘆 -» {country_display}\n\n"
@@ -971,7 +971,7 @@ async def process_multi_check_gate2(update, context, cards, user_id):
             
             result_text += (
                 f"[ϟ]𝗖𝗮𝗿𝗱 -» <code>{card}</code>\n"
-                f"[ϟ]𝗦𝘁𝗮𝘁𝘂𝘀 -» {status}\n"
+                f"[ϟ]𝗦𝘁𝗮𝘁𝘂𝘁𝘀 -» {status}\n"
                 f"[ϟ]𝗚𝗮𝘁𝗲𝘄𝗮𝘆 -» Shopify 14$\n"
                 f"[ϟ]𝗥𝗲𝘀𝗽𝗼𝗻𝘀𝗲 -» {response_str}\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -1115,7 +1115,7 @@ async def process_multi_check_gate3(update, context, cards, user_id):
             
             result_text += (
                 f"[ϟ]𝗖𝗮𝗿𝗱 -» <code>{card}</code>\n"
-                f"[ϟ]𝗦𝘁𝗮𝘁𝘂𝘀 -» {status}\n"
+                f"[ϟ]𝗦𝘁𝗮𝘁𝘂𝘁𝘀 -» {status}\n"
                 f"[ϟ]𝗚𝗮𝘁𝗲𝘄𝗮𝘆 -» Live Check\n"
                 f"[ϟ]𝗥𝗲𝗮𝘀𝗼𝗻 -» {res.message}\n"
                 f"[ϟ]𝗜𝗻𝗳𝗼 -» {res.card_info}\n"
@@ -1166,6 +1166,7 @@ async def add_site(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "site": site,
             "added_at": datetime.utcnow(),
             "active": True,
+            "personal": False,
             "last_used": None,
             "success_count": 0,
             "fail_count": 0
@@ -1180,6 +1181,60 @@ async def add_site(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='HTML'
         )
         log_event("INFO", f"Site added: {site}", user_id)
+    else:
+        await checking_msg.edit_text(
+            f"❌ Site failed to work with API\n\n"
+            f"🔗 Site: <code>{site}</code>\n"
+            f"📊 Status: Not Working ❌\n"
+            f"💬 Error: {message}\n\n"
+            f"Please try a different site",
+            parse_mode='HTML'
+        )
+
+async def addsitep(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Add a personal site for the user"""
+    user_id = update.effective_user.id
+    
+    if not context.args:
+        await update.message.reply_text("Usage: /addsitep <site_url>\nExample: /addsitep https://scorenn.com")
+        return
+    
+    site = context.args[0].strip()
+    
+    if not site.startswith(('http://', 'https://')):
+        site = f"https://{site}"
+    
+    # Check if site already exists for user
+    existing = user_sites_col.find_one({"user_id": user_id, "site": site})
+    if existing:
+        await update.message.reply_text(f"⚠️ Site already exists in your personal list:\n<code>{site}</code>", parse_mode='HTML')
+        return
+    
+    checking_msg = await update.message.reply_text(f"🔍 Testing personal site: {site}")
+    
+    is_working, message = await gate4_manager.check_site(site)
+    
+    if is_working:
+        user_sites_col.insert_one({
+            "user_id": user_id,
+            "site": site,
+            "added_at": datetime.utcnow(),
+            "active": True,
+            "personal": True,
+            "last_used": None,
+            "success_count": 0,
+            "fail_count": 0
+        })
+        
+        await checking_msg.edit_text(
+            f"✅ Personal site added successfully!\n\n"
+            f"🔗 Site: <code>{site}</code>\n"
+            f"📊 Status: Working ✅\n"
+            f"💬 Message: {message}\n\n"
+            f"Use /ash to check cards with this site",
+            parse_mode='HTML'
+        )
+        log_event("INFO", f"Personal site added: {site}", user_id)
     else:
         await checking_msg.edit_text(
             f"❌ Site failed to work with API\n\n"
@@ -1206,7 +1261,11 @@ async def remove_site(update: Update, context: ContextTypes.DEFAULT_TYPE):
     deleted = False
     removed_site = ""
     for site_variant in sites_to_try:
-        result = user_sites_col.delete_one({"user_id": user_id, "site": site_variant})
+        result = user_sites_col.delete_one({
+            "user_id": user_id, 
+            "site": site_variant,
+            "personal": False  # Only delete non-personal sites
+        })
         if result.deleted_count > 0:
             deleted = True
             removed_site = site_variant
@@ -1218,20 +1277,58 @@ async def remove_site(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(f"❌ Site not found in your list:\n<code>{site}</code>", parse_mode='HTML')
 
+async def rmsitep(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Remove a personal site from user's list"""
+    user_id = update.effective_user.id
+    
+    if not context.args:
+        await update.message.reply_text("Usage: /rmsitep <site_url>\nUse /listsitesp to see your personal sites")
+        return
+    
+    site = context.args[0].strip()
+    
+    # Try with and without protocol
+    sites_to_try = [site]
+    if not site.startswith(('http://', 'https://')):
+        sites_to_try.append(f"https://{site}")
+    
+    deleted = False
+    removed_site = ""
+    for site_variant in sites_to_try:
+        result = user_sites_col.delete_one({
+            "user_id": user_id, 
+            "site": site_variant,
+            "personal": True
+        })
+        if result.deleted_count > 0:
+            deleted = True
+            removed_site = site_variant
+            break
+    
+    if deleted:
+        await update.message.reply_text(f"✅ Personal site removed:\n<code>{removed_site}</code>", parse_mode='HTML')
+        log_event("INFO", f"Personal site removed: {removed_site}", user_id)
+    else:
+        await update.message.reply_text(f"❌ Personal site not found:\n<code>{site}</code>", parse_mode='HTML')
+
 async def list_sites(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
-    user_sites = list(user_sites_col.find({"user_id": user_id, "active": True}))
+    user_sites = list(user_sites_col.find({
+        "user_id": user_id, 
+        "active": True,
+        "personal": False
+    }))
     
     if not user_sites:
         await update.message.reply_text(
-            "📋 You haven't added any sites yet.\n\n"
+            "📋 You haven't added any regular sites yet.\n\n"
             "Use /addsite <site_url> to add your first site\n"
             "Example: /addsite https://scorenn.com"
         )
         return
     
-    site_list = "📋 <b>Your Sites:</b>\n\n"
+    site_list = "📋 <b>Your Regular Sites:</b>\n\n"
     for i, site_data in enumerate(user_sites, 1):
         site = site_data["site"]
         added = site_data["added_at"].strftime("%Y-%m-%d")
@@ -1244,8 +1341,45 @@ async def list_sites(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"   <b>Stats:</b> ✅{success} ❌{fails}\n\n"
         )
     
-    site_list += f"<b>Total Sites:</b> {len(user_sites)}\n"
+    site_list += f"<b>Total Regular Sites:</b> {len(user_sites)}\n"
     site_list += "Use /ash to check cards with these sites"
+    
+    await update.message.reply_text(site_list, parse_mode='HTML')
+
+async def listsitesp(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """List user's personal sites only"""
+    user_id = update.effective_user.id
+    
+    # Get only personal sites
+    user_sites = list(user_sites_col.find({
+        "user_id": user_id, 
+        "personal": True,
+        "active": True
+    }))
+    
+    if not user_sites:
+        await update.message.reply_text(
+            "📋 You haven't added any personal sites yet.\n\n"
+            "Use /addsitep <site_url> to add your first personal site\n"
+            "Example: /addsitep https://scorenn.com"
+        )
+        return
+    
+    site_list = "📋 <b>Your Personal Sites:</b>\n\n"
+    for i, site_data in enumerate(user_sites, 1):
+        site = site_data["site"]
+        added = site_data["added_at"].strftime("%Y-%m-%d")
+        success = site_data.get("success_count", 0)
+        fails = site_data.get("fail_count", 0)
+        
+        site_list += (
+            f"<b>{i}. Site:</b> <code>{site}</code>\n"
+            f"   <b>Added:</b> {added}\n"
+            f"   <b>Stats:</b> ✅{success} ❌{fails}\n\n"
+        )
+    
+    site_list += f"<b>Total Personal Sites:</b> {len(user_sites)}\n"
+    site_list += "These sites will be used exclusively for your checks"
     
     await update.message.reply_text(site_list, parse_mode='HTML')
 
@@ -1280,7 +1414,8 @@ async def process_gate4_single_check(update, context, card, user_id):
     
     if result.status == "Error":
         await update.message.reply_text(f"❌ Error: {result.message}")
-        gate4_manager.mark_site_bad(result.site_used)
+        if "Product ID is empty" in result.message:
+            await update.message.reply_text("⚠️ Site removed due to 'Product id is empty'. Please try again with different site.")
         return
     
     if result.status == "Captcha":
@@ -1319,7 +1454,7 @@ async def process_gate4_single_check(update, context, card, user_id):
     response_text = (
         f"{header}\n\n"
         f"[ϟ]𝗖𝗮𝗿𝗱 -» <code>{card}</code>\n"
-        f"[ϟ]𝗦𝘁𝗮𝘁𝘂𝘀 -» {status_display}\n"
+        f"[ϟ]𝗦𝘁𝗮𝘁𝘂𝘁𝘀 -» {status_display}\n"
         f"[ϟ]𝗚𝗮𝘁𝗲𝘄𝗮𝘆 -» {gateway}\n"
         f"[ϟ]𝗥𝗲𝘀𝗽𝗼𝗻𝘀𝗲 -» {result.response}\n\n"
         f"[ϟ]𝗜𝗻𝗳𝗼 -» {card_info}\n"
@@ -1443,7 +1578,19 @@ async def process_gate4_mass_check(update, context, cards, user_id):
                 proxy = await proxy_manager.rotate_proxy()
                 result = await gate4_manager.check_card(card, site, proxy)
                 
-                if result.status == "Captcha" or "HCAPTCHA" in result.response.upper():
+                # If we get "Product id is empty" or other site errors, retry with new site
+                if result.status == "Error" and "Product ID is empty" in result.message:
+                    retry_count += 1
+                    if retry_count < max_retries:
+                        await context.bot.send_message(
+                            chat_id=update.effective_chat.id,
+                            text=f"⚠️ Site error for card {i+1}, retrying with different site... (Attempt {retry_count}/{max_retries})"
+                        )
+                        await asyncio.sleep(1)
+                        continue
+                
+                # If captcha, try different site
+                if result.status == "Captcha":
                     retry_count += 1
                     if retry_count < max_retries:
                         await asyncio.sleep(1)
@@ -1453,9 +1600,11 @@ async def process_gate4_mass_check(update, context, cards, user_id):
             
             gate4_manager.update_user_check(user_id, result)
             
+            # Send individual result for hits
             if result.status == "Charged" or result.status == "Approved":
                 await send_individual_result(update, context, card, result, user_id)
             
+            # Update progress
             check_data = gate4_manager.get_user_check_data(user_id)
             if check_data:
                 await update_progress_buttons(context, update.effective_chat.id, status_msg.message_id, check_data)
@@ -1523,7 +1672,7 @@ async def send_individual_result(update, context, card, result, user_id):
     response_text = (
         f"{header}\n\n"
         f"[ϟ]𝗖𝗮𝗿𝗱 -» <code>{card}</code>\n"
-        f"[ϟ]𝗦𝘁𝗮𝘁𝘂𝘀 -» {status_display}\n"
+        f"[ϟ]𝗦𝘁𝗮𝘁𝘂𝘁𝘀 -» {status_display}\n"
         f"[ϟ]𝗚𝗮𝘁𝗲𝘄𝗮𝘆 -» {gateway}\n"
         f"[ϟ]𝗥𝗲𝘀𝗽𝗼𝗻𝘀𝗲 -» {result.response}\n\n"
         f"[ϟ]𝗜𝗻𝗳𝗼 -» {card_info}\n"
@@ -1880,8 +2029,9 @@ async def gate4_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "━━━━━━━━━━━━━━━━━━━━━━\n"
         "[⌬] 𝐅𝐍 𝐂𝐇𝐄𝐂𝐊𝐄𝐑 𝐂𝐔𝐑𝐑𝐄𝐍𝐓 𝐒𝐓𝐀𝐓𝐒 😈⚡\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"[✪] 𝐀𝐩𝐩𝐫𝐨𝐯𝐞𝐝: {approved}\n"
-        f"[✪] 𝐃𝐞𝐜𝐥𝐢𝐧𝐞𝐝: {declined}\n"
+        f"[✪] 𝐂𝐡𝐚𝐫𝐠𝐞𝐝: {charged} 🔥\n"
+        f"[✪] 𝐀𝐩𝐩𝐫𝐨𝐯𝐞𝐝: {approved} ✅\n"
+        f"[❌] 𝐃𝐞𝐜𝐥𝐢𝐧𝐞𝐝: {declined} ⛔️\n"
         f"[✪] 𝐂𝐡𝐞𝐜𝐤𝐞𝐝: {checked}/{total}\n"
         f"[✪] 𝐓𝐨𝐭𝐚𝐥: {total}\n"
         f"[✪] 𝐃𝐮𝐫𝐚𝐭𝐢𝐨𝐧: {format_duration(duration)}\n"
@@ -2082,9 +2232,12 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "[<a href='https://t.me/FN_SH_BOT'>⌬</a>] Limit: 1000 cards\n\n"
             "[<a href='https://t.me/FN_SH_BOT'>⌬</a>] Site Management \n"
             "- - - - - - - - - - - - - - -\n"
-            "[<a href='https://t.me/FN_SH_BOT'>⌬</a>] /addsite - Add custom site\n"
-            "[<a href='https://t.me/FN_SH_BOT'>⌬</a>] /rmsite - Remove site\n"
-            "[<a href='https://t.me/FN_SH_BOT'>⌬</a>] /sitelist - List your sites\n"
+            "[<a href='https://t.me/FN_SH_BOT'>⌬</a>] /addsite - Add regular site\n"
+            "[<a href='https://t.me/FN_SH_BOT'>⌬</a>] /addsitep - Add personal site\n"
+            "[<a href='https://t.me/FN_SH_BOT'>⌬</a>] /rmsite - Remove regular site\n"
+            "[<a href='https://t.me/FN_SH_BOT'>⌬</a>] /rmsitep - Remove personal site\n"
+            "[<a href='https://t.me/FN_SH_BOT'>⌬</a>] /sitelist - List regular sites\n"
+            "[<a href='https://t.me/FN_SH_BOT'>⌬</a>] /listsitesp - List personal sites\n"
             "[<a href='https://t.me/FN_SH_BOT'>⌬</a>] /chksite - Test site\n\n"
             "━━━━━━━━━━━━━━━━━━━━"
         )
@@ -2154,10 +2307,19 @@ def main():
     application.add_handler(CommandHandler("addsite", 
         lambda update, context: check_access(update, context, add_site)
     ))
+    application.add_handler(CommandHandler("addsitep", 
+        lambda update, context: check_access(update, context, add_site)
+    ))
     application.add_handler(CommandHandler("rmsite", 
         lambda update, context: check_access(update, context, remove_site)
     ))
+    application.add_handler(CommandHandler("rmsitep", 
+        lambda update, context: check_access(update, context, remove_site)
+    ))
     application.add_handler(CommandHandler("sitelist", 
+        lambda update, context: check_access(update, context, list_sites)
+    ))
+    application.add_handler(CommandHandler("sitelistp", 
         lambda update, context: check_access(update, context, list_sites)
     ))
     application.add_handler(CommandHandler("chksite", 
