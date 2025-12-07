@@ -237,7 +237,7 @@ def get_user_wait_time(user_id: int) -> int:
     return int(time_left)
 
 # Telegram Bot Configuration
-TOKEN = "8181079198:AAFIE0MVuCPWaC0w1HbBsHlCLJKKGpbDneM"
+TOKEN = "8181079198:AAH6e8p9D8e7-vyi6gY7dkPEUZSJIzLcWu0"
 
 # Per-user cooldown tracking
 user_cooldowns = {}
