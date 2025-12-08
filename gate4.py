@@ -17,7 +17,7 @@ MONGO_URI = "mongodb+srv://ElectraOp:BGMI272@cluster0.1jmwb.mongodb.net/?retryWr
 DB_NAME = "fn_bot"
 client = MongoClient(MONGO_URI)
 db = client[DB_NAME]
-user_sites_col = db["user_sites"]
+user_sites_col = db["user_sitess"]
 mass_checks_col = db["mass_checks"]
 sites_txt_col = db["sites_txt"]
 
