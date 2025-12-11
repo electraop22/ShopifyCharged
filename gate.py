@@ -578,8 +578,8 @@ async def sh(card_input: str, proxy_manager):
             'accept': 'application/json',
             'accept-language': 'en-US',
             'content-type': 'application/json',
-            'origin': 'https://violettefieldthreads.com',
-            'referer': 'https://violettefieldthreads.com/',
+            'origin': 'https://zombieclawpolish.com',
+            'referer': 'https://zombieclawpolish.com/',
             'sec-ch-ua': '"Chromium";v="137", "Not/A)Brand";v="24"',
             'sec-ch-ua-mobile': '?1',
             'sec-ch-ua-platform': '"Windows"',
@@ -825,7 +825,7 @@ async def sh(card_input: str, proxy_manager):
         for retry_count in range(max_retries):
             try:
                 async with r.post(
-                    'https://violettefieldthreads.com/checkouts/unstable/graphql',
+                    'https://zombieclawpolish.com/checkouts/unstable/graphql',
                     params=params,
                     headers=headers,
                     json=json_data,
